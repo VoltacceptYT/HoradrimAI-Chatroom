@@ -37,7 +37,6 @@ export function Chatroom() {
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastMessageIdRef = useRef<string | null>(null)
   const lastTimestampRef = useRef<number>(0)
-  const justSentMessageRef = useRef<boolean>(false)
   const router = useRouter()
 
   // Initialize user and check authentication
@@ -65,10 +64,10 @@ export function Chatroom() {
     // Load initial messages
     loadMessages()
 
-    // Start polling for new messages every 1.5 seconds
+    // Start polling for new messages every 1 second for better responsiveness
     pollingIntervalRef.current = setInterval(() => {
       pollForUpdates()
-    }, 1500)
+    }, 1000)
 
     return () => {
       if (pollingIntervalRef.current) {
@@ -107,6 +106,7 @@ export function Chatroom() {
         const latestMessage = data.messages[data.messages.length - 1]
         lastMessageIdRef.current = latestMessage.id
         lastTimestampRef.current = latestMessage.timestamp
+        console.log("Set initial tracking - ID:", latestMessage.id, "Timestamp:", latestMessage.timestamp)
       }
     } catch (error) {
       console.error("Failed to load messages:", error)
@@ -117,10 +117,8 @@ export function Chatroom() {
 
   const pollForUpdates = async () => {
     try {
-      // Use timestamp-based polling for more reliability
-      const url = lastTimestampRef.current ? `/api/poll?lastTimestamp=${lastTimestampRef.current}` : "/api/poll"
-
-      const response = await fetch(url)
+      // Always poll for all messages to ensure we don't miss any
+      const response = await fetch("/api/messages")
 
       if (!response.ok) {
         console.log("Polling request failed:", response.status)
@@ -134,44 +132,46 @@ export function Chatroom() {
       }
 
       const data = await response.json()
+      const newMessages = data.messages || []
 
-      if (data.hasNewMessages && data.messages && data.messages.length > 0) {
-        console.log("New messages received:", data.messages.length)
-
-        // Check if any of the new messages are from other users
-        const messagesFromOthers = data.messages.filter((msg: Message) => user && msg.username !== user.username)
-
-        setMessages((prev) => {
-          // Filter out duplicates and add new messages
-          const existingIds = new Set(prev.map((msg) => msg.id))
-          const newMessages = data.messages.filter((msg: Message) => !existingIds.has(msg.id))
-
+      // Check if we have new messages by comparing with current state
+      setMessages((prevMessages) => {
+        // If we have no previous messages, just set the new ones
+        if (prevMessages.length === 0) {
           if (newMessages.length > 0) {
-            // Update tracking references
             const latestMessage = newMessages[newMessages.length - 1]
             lastMessageIdRef.current = latestMessage.id
             lastTimestampRef.current = latestMessage.timestamp
-
-            return [...prev, ...newMessages]
+            console.log("Initial messages loaded via polling:", newMessages.length)
           }
-          return prev
-        })
-
-        // If we received messages from other users and we didn't just send a message, refresh the page
-        if (messagesFromOthers.length > 0 && !justSentMessageRef.current) {
-          console.log("Refreshing page due to new messages from other users")
-          window.location.reload()
+          return newMessages
         }
 
-        // Reset the flag after checking
-        justSentMessageRef.current = false
+        // Check if there are actually new messages
+        const prevIds = new Set(prevMessages.map((msg) => msg.id))
+        const actuallyNewMessages = newMessages.filter((msg) => !prevIds.has(msg.id))
 
-        // Clear any connection errors
-        if (error) {
-          setError(null)
+        if (actuallyNewMessages.length > 0) {
+          console.log("New messages detected:", actuallyNewMessages.length)
+
+          // Update tracking references
+          const latestMessage = newMessages[newMessages.length - 1]
+          lastMessageIdRef.current = latestMessage.id
+          lastTimestampRef.current = latestMessage.timestamp
+
+          // Return all messages (the server already handles ordering)
+          return newMessages
         }
-        setIsConnected(true)
+
+        // No new messages, return previous state
+        return prevMessages
+      })
+
+      // Clear any connection errors
+      if (error) {
+        setError(null)
       }
+      setIsConnected(true)
     } catch (error) {
       console.log("Polling update failed:", error)
       setIsConnected(false)
@@ -186,9 +186,6 @@ export function Chatroom() {
     try {
       setError(null)
       console.log("Sending message...")
-
-      // Set flag to indicate we just sent a message
-      justSentMessageRef.current = true
 
       const response = await fetch("/api/messages", {
         method: "POST",
@@ -213,22 +210,14 @@ export function Chatroom() {
         console.log("Message sent successfully")
         setInputValue("")
 
-        // Add message locally for immediate feedback
-        setMessages((prev) => {
-          const exists = prev.some((msg) => msg.id === data.message.id)
-          if (!exists) {
-            lastMessageIdRef.current = data.message.id
-            lastTimestampRef.current = data.message.timestamp
-            return [...prev, data.message]
-          }
-          return prev
-        })
+        // Immediately poll for updates to get the new message
+        setTimeout(() => {
+          pollForUpdates()
+        }, 100)
       }
     } catch (error) {
       console.error("Failed to send message:", error)
       setError("Failed to send message. Please try again.")
-      // Reset flag on error
-      justSentMessageRef.current = false
     }
   }
 
@@ -253,16 +242,13 @@ export function Chatroom() {
         throw new Error(data.error || "Failed to clear chat")
       }
 
-      // Clear messages locally and refresh page
+      // Clear messages locally
       setMessages([])
       lastMessageIdRef.current = null
       lastTimestampRef.current = 0
       setShowClearModal(false)
 
-      // Refresh page after clearing chat
-      setTimeout(() => {
-        window.location.reload()
-      }, 500)
+      console.log("Chat cleared successfully")
     } catch (error: any) {
       console.error("Failed to clear chat:", error)
       setError(error.message || "Failed to clear chat.")
