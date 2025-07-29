@@ -68,8 +68,9 @@ export default function LoginPage() {
       const data = await response.json()
 
       if (response.ok) {
-        // Store user data
+        // Store user data and password for profile updates
         localStorage.setItem("chatUser", JSON.stringify(data.user))
+        localStorage.setItem("userPassword", password) // Store for profile updates
         router.push("/")
       } else {
         setError(data.error || "Login failed")

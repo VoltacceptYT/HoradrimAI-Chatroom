@@ -2,37 +2,22 @@ import { type NextRequest, NextResponse } from "next/server"
 
 // Generate profile picture SVG
 function generateProfilePicture(identifier: string): string {
-  // Create a simple hash from the identifier
   let hash = 0
   for (let i = 0; i < identifier.length; i++) {
     const char = identifier.charCodeAt(i)
     hash = (hash << 5) - hash + char
-    hash = hash & hash // Convert to 32-bit integer
+    hash = hash & hash
   }
 
-  // Use hash to determine colors and pattern
-  const colors = [
-    "#ef4444", // red-500
-    "#dc2626", // red-600
-    "#b91c1c", // red-700
-    "#991b1b", // red-800
-    "#6b7280", // gray-500
-    "#4b5563", // gray-600
-    "#374151", // gray-700
-  ]
+  const colors = ["#ef4444", "#dc2626", "#b91c1c", "#991b1b", "#6b7280", "#4b5563", "#374151"]
 
   const bgColor = colors[Math.abs(hash) % colors.length]
   const patternColor = colors[(Math.abs(hash) + 3) % colors.length]
 
-  // Generate a simple geometric pattern
   const patterns = [
-    // Circle pattern
     `<circle cx="32" cy="32" r="20" fill="${patternColor}" opacity="0.8"/>`,
-    // Square pattern
     `<rect x="16" y="16" width="32" height="32" fill="${patternColor}" opacity="0.8"/>`,
-    // Diamond pattern
     `<polygon points="32,12 52,32 32,52 12,32" fill="${patternColor}" opacity="0.8"/>`,
-    // Triangle pattern
     `<polygon points="32,16 48,48 16,48" fill="${patternColor}" opacity="0.8"/>`,
   ]
 
@@ -51,8 +36,8 @@ function generateProfilePicture(identifier: string): string {
   return `data:image/svg+xml;base64,${btoa(svg)}`
 }
 
-// Simple user database - now accepts any email
-const users = [
+// In-memory user database with profile customization
+const users: any[] = [
   {
     id: "1",
     email: "admin@voltaccept.com",
@@ -60,6 +45,9 @@ const users = [
     username: "admin",
     displayName: "Admin",
     profilePicture: generateProfilePicture("admin@voltaccept.com"),
+    customProfilePicture: null,
+    bio: "System Administrator",
+    theme: "dark",
   },
   {
     id: "2",
@@ -68,6 +56,9 @@ const users = [
     username: "voltuser",
     displayName: "Volt User",
     profilePicture: generateProfilePicture("user@voltaccept.com"),
+    customProfilePicture: null,
+    bio: "Voltarian Community Member",
+    theme: "dark",
   },
   {
     id: "3",
@@ -76,6 +67,9 @@ const users = [
     username: "testuser",
     displayName: "Test User",
     profilePicture: generateProfilePicture("test@gmail.com"),
+    customProfilePicture: null,
+    bio: "Testing the platform",
+    theme: "dark",
   },
 ]
 
@@ -103,6 +97,9 @@ export async function POST(request: NextRequest) {
         username,
         displayName: displayName || email.split("@")[0],
         profilePicture: generateProfilePicture(email),
+        customProfilePicture: null,
+        bio: "New member",
+        theme: "dark",
       }
       users.push(newUser)
       user = newUser

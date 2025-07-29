@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-// In-memory storage for real-time updates (shared with poll route)
+// In-memory storage for messages (no Redis)
 let memoryMessages: Message[] = []
 
 interface Message {
@@ -12,46 +12,17 @@ interface Message {
   timestamp: number
 }
 
-// Initialize Redis connection with error handling
-async function getRedisClient() {
-  try {
-    if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-      console.log("Redis environment variables not found, using memory storage")
-      return null
-    }
-
-    const { Redis } = await import("@upstash/redis")
-    return new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    })
-  } catch (error) {
-    console.error("Failed to initialize Redis:", error)
-    return null
-  }
-}
-
 // Get messages
 export async function GET() {
   try {
-    const redis = await getRedisClient()
-
-    if (!redis) {
-      return NextResponse.json({
-        messages: memoryMessages.slice().reverse(),
-      })
-    }
-
-    const messages = await redis.lrange("chatroom:messages", 0, -1)
-    const parsedMessages = messages.map((msg) => JSON.parse(msg as string))
-
+    console.log(`Retrieved ${memoryMessages.length} messages from memory`)
     return NextResponse.json({
-      messages: parsedMessages.reverse(),
+      messages: memoryMessages.slice().reverse(),
     })
   } catch (error) {
     console.error("Failed to get messages:", error)
     return NextResponse.json({
-      messages: memoryMessages.slice().reverse(),
+      messages: [],
     })
   }
 }
@@ -74,21 +45,15 @@ export async function POST(request: NextRequest) {
       timestamp: Date.now(),
     }
 
-    const redis = await getRedisClient()
+    console.log("Storing message in memory:", message.id)
+    memoryMessages.unshift(message)
 
-    if (!redis) {
-      // Use memory storage as fallback
-      memoryMessages.unshift(message)
-      if (memoryMessages.length > 100) {
-        memoryMessages = memoryMessages.slice(0, 100)
-      }
-    } else {
-      // Store message in Redis
-      await redis.lpush("chatroom:messages", JSON.stringify(message))
-      await redis.ltrim("chatroom:messages", 0, 99)
+    // Keep last 100 messages
+    if (memoryMessages.length > 100) {
+      memoryMessages = memoryMessages.slice(0, 100)
     }
 
-    console.log("Message stored successfully:", message.id)
+    console.log("Message stored successfully in memory")
 
     return NextResponse.json({ success: true, message })
   } catch (error) {
@@ -111,13 +76,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 })
     }
 
-    const redis = await getRedisClient()
-
-    if (!redis) {
-      memoryMessages = []
-    } else {
-      await redis.del("chatroom:messages")
-    }
+    console.log("Clearing memory storage")
+    memoryMessages = []
+    console.log("Memory messages cleared successfully")
 
     console.log("Chat cleared by admin:", userEmail)
 

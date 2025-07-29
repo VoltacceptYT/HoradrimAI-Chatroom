@@ -3,23 +3,6 @@ import { type NextRequest, NextResponse } from "next/server"
 // In-memory storage for polling (shared with messages route)
 const memoryMessages: any[] = []
 
-async function getRedisClient() {
-  try {
-    if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-      return null
-    }
-
-    const { Redis } = await import("@upstash/redis")
-    return new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    })
-  } catch (error) {
-    console.error("Failed to initialize Redis:", error)
-    return null
-  }
-}
-
 // Enhanced polling endpoint for real-time updates
 export async function GET(request: NextRequest) {
   try {
@@ -27,23 +10,15 @@ export async function GET(request: NextRequest) {
     const lastMessageId = url.searchParams.get("lastMessageId")
     const lastTimestamp = url.searchParams.get("lastTimestamp")
 
-    const redis = await getRedisClient()
-
-    let messages: any[] = []
-
-    if (!redis) {
-      // Use memory storage as fallback
-      messages = memoryMessages.slice().reverse()
-    } else {
-      const redisMessages = await redis.lrange("chatroom:messages", 0, -1)
-      messages = redisMessages.map((msg) => JSON.parse(msg as string)).reverse()
-    }
+    // Get messages from the same memory storage as messages route
+    const { memoryMessages: messages } = await import("./messages/route")
+    const allMessages = messages.slice().reverse()
 
     // If lastMessageId is provided, only return newer messages
     if (lastMessageId) {
-      const lastIndex = messages.findIndex((msg) => msg.id === lastMessageId)
+      const lastIndex = allMessages.findIndex((msg) => msg.id === lastMessageId)
       if (lastIndex !== -1) {
-        const newMessages = messages.slice(lastIndex + 1)
+        const newMessages = allMessages.slice(lastIndex + 1)
         return NextResponse.json({
           messages: newMessages,
           hasNewMessages: newMessages.length > 0,
@@ -54,7 +29,7 @@ export async function GET(request: NextRequest) {
     // If lastTimestamp is provided, return messages newer than that timestamp
     if (lastTimestamp) {
       const timestamp = Number.parseInt(lastTimestamp)
-      const newMessages = messages.filter((msg) => msg.timestamp > timestamp)
+      const newMessages = allMessages.filter((msg) => msg.timestamp > timestamp)
       return NextResponse.json({
         messages: newMessages,
         hasNewMessages: newMessages.length > 0,
@@ -62,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      messages: messages,
+      messages: allMessages,
       hasNewMessages: false,
     })
   } catch (error) {
