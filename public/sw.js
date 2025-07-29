@@ -1,13 +1,14 @@
 // Service Worker for push notifications and offline support
 
-const CACHE_NAME = "voltarian-networking-v1"
-const STATIC_CACHE_NAME = "voltarian-static-v1"
+const CACHE_NAME = "voltarian-networking-v2"
+const STATIC_CACHE_NAME = "voltarian-static-v2"
 
 // Static resources to cache (pages, manifest, etc.)
 const staticUrlsToCache = ["/", "/login", "/offline", "/manifest.json"]
 
 // Install event - cache static resources only
 self.addEventListener("install", (event) => {
+  console.log("Service Worker installing...")
   event.waitUntil(
     caches
       .open(STATIC_CACHE_NAME)
@@ -35,6 +36,7 @@ self.addEventListener("install", (event) => {
 
 // Activate event - clean up old caches
 self.addEventListener("activate", (event) => {
+  console.log("Service Worker activating...")
   event.waitUntil(
     caches
       .keys()
@@ -49,7 +51,8 @@ self.addEventListener("activate", (event) => {
         )
       })
       .then(() => {
-        self.clients.claim()
+        console.log("Service Worker activated and claiming clients")
+        return self.clients.claim()
       }),
   )
 })
@@ -62,13 +65,21 @@ function shouldCache(url) {
   }
 
   // Never cache dynamic data
-  if (url.includes("_next/static") && url.includes("chunks")) {
+  if (url.includes("_next/data")) {
     return false
   }
 
   // Only cache static pages and assets
   return (
-    url.includes("/") || url.includes(".js") || url.includes(".css") || url.includes(".png") || url.includes(".ico")
+    url.endsWith("/") ||
+    url.includes(".js") ||
+    url.includes(".css") ||
+    url.includes(".png") ||
+    url.includes(".ico") ||
+    url.includes(".svg") ||
+    url.includes(".jpg") ||
+    url.includes(".jpeg") ||
+    url.includes(".gif")
   )
 }
 
@@ -118,7 +129,7 @@ self.addEventListener("fetch", (event) => {
       return fetch(event.request)
         .then((response) => {
           // Don't cache non-successful responses
-          if (!response || response.status !== 200 || response.type !== "basic") {
+          if (!response || response.status !== 200) {
             return response
           }
 
@@ -155,16 +166,19 @@ self.addEventListener("fetch", (event) => {
 
 // Push event - handle push notifications
 self.addEventListener("push", (event) => {
+  console.log("Push event received:", event)
+
   if (event.data) {
     try {
       const data = event.data.json()
+      console.log("Push data:", data)
 
       const options = {
-        body: data.body,
+        body: data.body || "New message received",
         icon: data.icon || "/icon-192x192.png",
         badge: data.badge || "/icon-96x96.png",
         tag: data.tag || "default",
-        data: data.data || {},
+        data: data.data || { url: "/" },
         actions: [
           {
             action: "open",
@@ -180,19 +194,55 @@ self.addEventListener("push", (event) => {
         vibrate: [200, 100, 200],
       }
 
-      event.waitUntil(self.registration.showNotification(data.title || "Voltarian Networking", options))
+      console.log("Showing notification with options:", options)
+
+      event.waitUntil(
+        self.registration
+          .showNotification(data.title || "Voltarian Networking", options)
+          .then(() => console.log("Notification shown successfully"))
+          .catch((err) => console.error("Error showing notification:", err)),
+      )
     } catch (error) {
       console.error("Error handling push event:", error)
+
+      // Fallback notification if JSON parsing fails
+      event.waitUntil(
+        self.registration.showNotification("Voltarian Networking", {
+          body: "You have a new message",
+          icon: "/icon-192x192.png",
+          badge: "/icon-96x96.png",
+        }),
+      )
     }
+  } else {
+    console.log("Push event has no data")
   }
 })
 
 // Notification click event
 self.addEventListener("notificationclick", (event) => {
+  console.log("Notification clicked:", event)
+
   event.notification.close()
 
   if (event.action === "open" || !event.action) {
-    event.waitUntil(clients.openWindow(event.notification.data.url || "/"))
+    const urlToOpen = event.notification.data?.url || "/"
+    console.log("Opening URL:", urlToOpen)
+
+    event.waitUntil(
+      clients.matchAll({ type: "window" }).then((clientList) => {
+        // Check if there's already a window open
+        for (const client of clientList) {
+          if (client.url === urlToOpen && "focus" in client) {
+            return client.focus()
+          }
+        }
+        // If no window is open, open a new one
+        if (clients.openWindow) {
+          return clients.openWindow(urlToOpen)
+        }
+      }),
+    )
   }
 })
 
@@ -222,3 +272,6 @@ self.addEventListener("unhandledrejection", (event) => {
   console.error("Service worker unhandled rejection:", event.reason)
   event.preventDefault()
 })
+
+// Log when service worker is installed
+console.log("Service Worker script loaded")

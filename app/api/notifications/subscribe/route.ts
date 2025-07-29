@@ -11,6 +11,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Subscription and user email are required" }, { status: 400 })
     }
 
+    console.log("Storing subscription for:", userEmail)
+    console.log("Subscription object:", subscription)
+
     // Store subscription with user email
     const existingIndex = subscriptions.findIndex((sub) => sub.userEmail === userEmail)
 
@@ -23,6 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`Push subscription stored for user: ${userEmail}`)
+    console.log("Total subscriptions:", subscriptions.length)
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -40,11 +44,14 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Remove subscription for user
+    const initialCount = subscriptions.length
     subscriptions = subscriptions.filter((sub) => sub.userEmail !== userEmail)
+    const removed = initialCount - subscriptions.length
 
     console.log(`Push subscription removed for user: ${userEmail}`)
+    console.log(`Removed ${removed} subscriptions, ${subscriptions.length} remaining`)
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, removed })
   } catch (error) {
     console.error("Failed to remove push subscription:", error)
     return NextResponse.json({ error: "Failed to remove subscription" }, { status: 500 })

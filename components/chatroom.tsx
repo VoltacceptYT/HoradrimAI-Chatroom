@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Trash2, LogOut, Settings } from "lucide-react"
+import { Send, Trash2, LogOut, Settings, RefreshCw } from "lucide-react"
 import { InstallPrompt } from "@/components/install-prompt"
 import { PushNotifications } from "@/components/push-notifications"
 import { ProfileSettings } from "@/components/profile-settings"
@@ -39,6 +39,7 @@ export function Chatroom() {
   const [showClearModal, setShowClearModal] = useState(false)
   const [showProfileSettings, setShowProfileSettings] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastMessageIdRef = useRef<string | null>(null)
@@ -209,6 +210,9 @@ export function Chatroom() {
       setError(null)
       console.log("Sending message...")
 
+      const messageText = inputValue.trim()
+      setInputValue("") // Clear input immediately for better UX
+
       const response = await fetch("/api/messages", {
         method: "POST",
         headers: {
@@ -216,7 +220,7 @@ export function Chatroom() {
           "Cache-Control": "no-cache, no-store, must-revalidate",
         },
         body: JSON.stringify({
-          text: inputValue.trim(),
+          text: messageText,
           username: user.username,
           displayName: user.displayName,
           profilePicture: user.customProfilePicture || user.profilePicture,
@@ -231,7 +235,6 @@ export function Chatroom() {
 
       if (data.success) {
         console.log("Message sent successfully")
-        setInputValue("")
 
         // Send push notifications to other users
         if (!user.isGuest && user.email) {
@@ -242,7 +245,7 @@ export function Chatroom() {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                message: inputValue.trim(),
+                message: messageText,
                 senderName: user.displayName,
                 excludeUser: user.email,
               }),
@@ -323,6 +326,12 @@ export function Chatroom() {
     setUser(updatedUser)
   }
 
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    await loadMessages()
+    setIsRefreshing(false)
+  }
+
   // Only show clear button for @voltaccept.com emails
   const canClearChat = user?.email?.endsWith("@voltaccept.com")
 
@@ -366,6 +375,16 @@ export function Chatroom() {
                   <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-400" : "bg-red-400"}`} />
                   <div className="text-xs text-gray-400">{messages.length} messages</div>
                 </div>
+                <Button
+                  onClick={handleManualRefresh}
+                  size="sm"
+                  variant="ghost"
+                  className="text-gray-400 hover:text-white hover:bg-gray-700"
+                  disabled={isRefreshing}
+                  title="Refresh messages"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                </Button>
                 <PushNotifications user={user} />
                 <Button
                   onClick={() => setShowProfileSettings(true)}
@@ -403,11 +422,16 @@ export function Chatroom() {
                 </div>
               ) : (
                 messages.map((message) => (
-                  <div key={message.id} className="flex flex-col max-w-[75%]">
+                  <div
+                    key={message.id}
+                    className={`flex flex-col ${
+                      message.username === user.username ? "ml-auto" : "mr-auto"
+                    } max-w-[75%]`}
+                  >
                     {/* Profile */}
                     <div className="flex items-center gap-2 mb-1">
                       <img
-                        src={message.profilePicture || "/placeholder.svg"}
+                        src={message.profilePicture || "/placeholder.svg?height=40&width=40"}
                         alt={message.displayName}
                         className="w-6 h-6 rounded-full border border-gray-600/50 shadow-sm"
                       />
@@ -416,7 +440,15 @@ export function Chatroom() {
                     </div>
 
                     {/* Message */}
-                    <div className="bg-gradient-to-br from-gray-800/95 to-gray-900/95 backdrop-blur-sm border border-gray-700/50 rounded-xl rounded-tl-sm p-3 shadow-sm">
+                    <div
+                      className={`${
+                        message.username === user.username
+                          ? "bg-gradient-to-br from-gray-700/95 to-gray-800/95 border-gray-600/50"
+                          : "bg-gradient-to-br from-gray-800/95 to-gray-900/95 border-gray-700/50"
+                      } backdrop-blur-sm border rounded-xl ${
+                        message.username === user.username ? "rounded-tr-sm" : "rounded-tl-sm"
+                      } p-3 shadow-sm`}
+                    >
                       <div className="text-sm text-gray-100 whitespace-pre-wrap break-words">{message.text}</div>
                     </div>
                   </div>
