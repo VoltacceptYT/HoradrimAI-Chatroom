@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-// In-memory fallback storage for development/when Redis is unavailable
+// In-memory storage for real-time updates
 let memoryMessages: Message[] = []
+const connectedClients: Set<ReadableStreamDefaultController> = new Set()
 
 interface Message {
   id: string
@@ -30,13 +31,37 @@ async function getRedisClient() {
   }
 }
 
+// Broadcast message to all connected clients
+function broadcastMessage(message: any) {
+  const data = JSON.stringify({ type: "message", message })
+  connectedClients.forEach((controller) => {
+    try {
+      controller.enqueue(`data: ${data}\n\n`)
+    } catch (error) {
+      // Remove disconnected clients
+      connectedClients.delete(controller)
+    }
+  })
+}
+
+// Broadcast clear event to all connected clients
+function broadcastClear() {
+  const data = JSON.stringify({ type: "clear" })
+  connectedClients.forEach((controller) => {
+    try {
+      controller.enqueue(`data: ${data}\n\n`)
+    } catch (error) {
+      connectedClients.delete(controller)
+    }
+  })
+}
+
 // Get messages
 export async function GET() {
   try {
     const redis = await getRedisClient()
 
     if (!redis) {
-      // Use memory storage as fallback
       return NextResponse.json({
         messages: memoryMessages.slice().reverse(),
       })
@@ -50,7 +75,6 @@ export async function GET() {
     })
   } catch (error) {
     console.error("Failed to get messages:", error)
-    // Fallback to memory storage
     return NextResponse.json({
       messages: memoryMessages.slice().reverse(),
     })
@@ -79,29 +103,17 @@ export async function POST(request: NextRequest) {
     if (!redis) {
       // Use memory storage as fallback
       memoryMessages.unshift(message)
-      // Keep only last 100 messages
       if (memoryMessages.length > 100) {
         memoryMessages = memoryMessages.slice(0, 100)
       }
-      return NextResponse.json({ success: true, message })
+    } else {
+      // Store message in Redis
+      await redis.lpush("chatroom:messages", JSON.stringify(message))
+      await redis.ltrim("chatroom:messages", 0, 99)
     }
 
-    // Store message in Redis
-    await redis.lpush("chatroom:messages", JSON.stringify(message))
-    await redis.ltrim("chatroom:messages", 0, 99)
-
-    // Try to broadcast (optional, won't fail if pub/sub doesn't work)
-    try {
-      await redis.publish(
-        "chatroom:updates",
-        JSON.stringify({
-          type: "message",
-          message,
-        }),
-      )
-    } catch (pubError) {
-      console.log("Pub/sub not available, using polling fallback")
-    }
+    // Broadcast to all connected clients
+    broadcastMessage(message)
 
     return NextResponse.json({ success: true, message })
   } catch (error) {
@@ -110,36 +122,37 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Clear messages
-export async function DELETE() {
+// Clear messages (admin only)
+export async function DELETE(request: NextRequest) {
   try {
+    // Check if user is admin
+    const authHeader = request.headers.get("authorization")
+    if (!authHeader) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const userEmail = authHeader.replace("Bearer ", "")
+    if (!userEmail.endsWith("@voltaccept.com")) {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 })
+    }
+
     const redis = await getRedisClient()
 
     if (!redis) {
-      // Clear memory storage
       memoryMessages = []
-      return NextResponse.json({ success: true })
+    } else {
+      await redis.del("chatroom:messages")
     }
 
-    await redis.del("chatroom:messages")
-
-    // Try to broadcast clear event (optional)
-    try {
-      await redis.publish(
-        "chatroom:updates",
-        JSON.stringify({
-          type: "clear",
-        }),
-      )
-    } catch (pubError) {
-      console.log("Pub/sub not available for clear broadcast")
-    }
+    // Broadcast clear event
+    broadcastClear()
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Failed to clear messages:", error)
-    // Fallback: clear memory storage
-    memoryMessages = []
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ error: "Failed to clear messages" }, { status: 500 })
   }
 }
+
+// Export the connectedClients for use in stream endpoint
+export { connectedClients }
