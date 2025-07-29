@@ -13,19 +13,28 @@ export default function OfflinePage() {
     setIsRetrying(true)
 
     try {
-      // Check if we're back online
+      // Check if we're back online by testing a simple endpoint
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+
       const response = await fetch("/api/messages", {
-        method: "HEAD",
+        method: "GET",
         cache: "no-cache",
+        signal: controller.signal,
       })
 
+      clearTimeout(timeoutId)
+
       if (response.ok) {
-        router.push("/")
+        // We're back online, redirect to home
+        window.location.href = "/"
       } else {
-        throw new Error("Still offline")
+        throw new Error("Server not responding")
       }
     } catch (error) {
-      console.log("Still offline")
+      console.log("Still offline or server error:", error.message)
+      // Show user-friendly message
+      alert("Still unable to connect. Please check your internet connection.")
     } finally {
       setIsRetrying(false)
     }

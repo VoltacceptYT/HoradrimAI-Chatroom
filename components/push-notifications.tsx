@@ -44,8 +44,19 @@ export function PushNotifications({ user }: PushNotificationsProps) {
     setIsLoading(true)
 
     try {
-      // Register service worker
-      const registration = await navigator.serviceWorker.register("/sw.js")
+      // Register service worker with error handling
+      let registration
+      try {
+        registration = await navigator.serviceWorker.register("/sw.js", {
+          scope: "/",
+        })
+        console.log("Service worker registered successfully")
+      } catch (swError) {
+        console.error("Service worker registration failed:", swError)
+        throw new Error("Failed to register service worker")
+      }
+
+      // Wait for service worker to be ready
       await navigator.serviceWorker.ready
 
       // Request notification permission
@@ -83,7 +94,7 @@ export function PushNotifications({ user }: PushNotificationsProps) {
       console.log("Successfully subscribed to push notifications")
     } catch (error) {
       console.error("Error subscribing to notifications:", error)
-      alert("Failed to enable notifications. Please try again.")
+      alert(`Failed to enable notifications: ${error.message}`)
     } finally {
       setIsLoading(false)
     }
