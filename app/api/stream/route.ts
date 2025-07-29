@@ -1,12 +1,31 @@
 import type { NextRequest } from "next/server"
-import { Redis } from "@upstash/redis"
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-})
+// Store connected clients globally
+const connectedClients = new Set<ReadableStreamDefaultController>()
 
-const connectedClients: Set<ReadableStreamDefaultController> = new Set()
+// Broadcast message to all connected clients
+export function broadcastMessage(message: any) {
+  const data = `data: ${JSON.stringify({ type: "message", message })}\n\n`
+  connectedClients.forEach((controller) => {
+    try {
+      controller.enqueue(new TextEncoder().encode(data))
+    } catch (error) {
+      connectedClients.delete(controller)
+    }
+  })
+}
+
+// Broadcast clear event
+export function broadcastClear() {
+  const data = `data: ${JSON.stringify({ type: "clear" })}\n\n`
+  connectedClients.forEach((controller) => {
+    try {
+      controller.enqueue(new TextEncoder().encode(data))
+    } catch (error) {
+      connectedClients.delete(controller)
+    }
+  })
+}
 
 export async function GET(request: NextRequest) {
   const encoder = new TextEncoder()
@@ -15,6 +34,7 @@ export async function GET(request: NextRequest) {
     start(controller) {
       // Add client to connected clients
       connectedClients.add(controller)
+      console.log(`Client connected. Total clients: ${connectedClients.size}`)
 
       // Send initial connection message
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "connected" })}\n\n`))
@@ -26,15 +46,18 @@ export async function GET(request: NextRequest) {
         } catch (error) {
           clearInterval(heartbeatInterval)
           connectedClients.delete(controller)
+          console.log(`Client disconnected. Total clients: ${connectedClients.size}`)
         }
       }, 30000)
 
       // Clean up on disconnect
-      request.signal.addEventListener("abort", () => {
+      const cleanup = () => {
         clearInterval(heartbeatInterval)
         connectedClients.delete(controller)
-        controller.close()
-      })
+        console.log(`Client disconnected. Total clients: ${connectedClients.size}`)
+      }
+
+      request.signal.addEventListener("abort", cleanup)
     },
   })
 
@@ -46,30 +69,6 @@ export async function GET(request: NextRequest) {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Headers": "Cache-Control",
     },
-  })
-}
-
-// Broadcast message to all connected clients
-export function broadcastMessage(message: any) {
-  const data = JSON.stringify({ type: "message", message })
-  connectedClients.forEach((controller) => {
-    try {
-      controller.enqueue(`data: ${data}\n\n`)
-    } catch (error) {
-      connectedClients.delete(controller)
-    }
-  })
-}
-
-// Broadcast clear event
-export function broadcastClear() {
-  const data = JSON.stringify({ type: "clear" })
-  connectedClients.forEach((controller) => {
-    try {
-      controller.enqueue(`data: ${data}\n\n`)
-    } catch (error) {
-      connectedClients.delete(controller)
-    }
   })
 }
 

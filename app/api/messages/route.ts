@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-// In-memory storage for real-time updates
+// In-memory storage for real-time updates (shared with poll route)
 let memoryMessages: Message[] = []
-const connectedClients: Set<ReadableStreamDefaultController> = new Set()
 
 interface Message {
   id: string
   text: string
   username: string
+  displayName: string
   profilePicture: string
   timestamp: number
 }
@@ -29,31 +29,6 @@ async function getRedisClient() {
     console.error("Failed to initialize Redis:", error)
     return null
   }
-}
-
-// Broadcast message to all connected clients
-function broadcastMessage(message: any) {
-  const data = JSON.stringify({ type: "message", message })
-  connectedClients.forEach((controller) => {
-    try {
-      controller.enqueue(`data: ${data}\n\n`)
-    } catch (error) {
-      // Remove disconnected clients
-      connectedClients.delete(controller)
-    }
-  })
-}
-
-// Broadcast clear event to all connected clients
-function broadcastClear() {
-  const data = JSON.stringify({ type: "clear" })
-  connectedClients.forEach((controller) => {
-    try {
-      controller.enqueue(`data: ${data}\n\n`)
-    } catch (error) {
-      connectedClients.delete(controller)
-    }
-  })
 }
 
 // Get messages
@@ -84,7 +59,7 @@ export async function GET() {
 // Send message
 export async function POST(request: NextRequest) {
   try {
-    const { text, username, profilePicture } = await request.json()
+    const { text, username, displayName, profilePicture } = await request.json()
 
     if (!text || !username) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -94,6 +69,7 @@ export async function POST(request: NextRequest) {
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       text,
       username,
+      displayName: displayName || username,
       profilePicture: profilePicture || "/placeholder.svg?height=40&width=40",
       timestamp: Date.now(),
     }
@@ -112,8 +88,7 @@ export async function POST(request: NextRequest) {
       await redis.ltrim("chatroom:messages", 0, 99)
     }
 
-    // Broadcast to all connected clients
-    broadcastMessage(message)
+    console.log("Message stored successfully:", message.id)
 
     return NextResponse.json({ success: true, message })
   } catch (error) {
@@ -144,8 +119,7 @@ export async function DELETE(request: NextRequest) {
       await redis.del("chatroom:messages")
     }
 
-    // Broadcast clear event
-    broadcastClear()
+    console.log("Chat cleared by admin:", userEmail)
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -153,6 +127,3 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Failed to clear messages" }, { status: 500 })
   }
 }
-
-// Export the connectedClients for use in stream endpoint
-export { connectedClients }

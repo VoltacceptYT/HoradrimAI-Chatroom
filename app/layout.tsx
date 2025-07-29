@@ -6,8 +6,8 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "HoradrimAI Chatroom",
-  description: "A public chatroom for Diablo II: Lord of Destruction fans",
+  title: "Voltarian Networking",
+  description: "Connect with the Voltarian community",
   icons: {
     icon: "/placeholder.svg?height=32&width=32",
   },

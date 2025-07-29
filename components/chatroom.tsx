@@ -12,12 +12,14 @@ interface Message {
   id: string
   text: string
   username: string
+  displayName: string
   profilePicture: string
   timestamp: number
 }
 
 interface User {
   username: string
+  displayName: string
   email?: string
   profilePicture: string
   isGuest?: boolean
@@ -32,7 +34,9 @@ export function Chatroom() {
   const [showClearModal, setShowClearModal] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const eventSourceRef = useRef<EventSource | null>(null)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const lastMessageIdRef = useRef<string | null>(null)
+  const lastTimestampRef = useRef<number>(0)
   const router = useRouter()
 
   // Initialize user and check authentication
@@ -50,46 +54,26 @@ export function Chatroom() {
     }
   }, [router])
 
-  // Set up Server-Sent Events for real-time messages
+  // Set up polling for real-time messages
   useEffect(() => {
     if (!user) return
 
-    const eventSource = new EventSource("/api/stream")
-    eventSourceRef.current = eventSource
-
-    eventSource.onopen = () => {
-      setIsConnected(true)
-      setError(null)
-    }
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (data.type === "message") {
-          setMessages((prev) => {
-            // Avoid duplicates
-            const exists = prev.some((msg) => msg.id === data.message.id)
-            if (exists) return prev
-            return [...prev, data.message]
-          })
-        } else if (data.type === "clear") {
-          setMessages([])
-        }
-      } catch (error) {
-        console.error("Error parsing SSE data:", error)
-      }
-    }
-
-    eventSource.onerror = () => {
-      setIsConnected(false)
-      setError("Connection lost. Trying to reconnect...")
-    }
+    console.log("Setting up polling for real-time updates...")
+    setIsConnected(true)
 
     // Load initial messages
     loadMessages()
 
+    // Start polling for new messages every 1.5 seconds
+    pollingIntervalRef.current = setInterval(() => {
+      pollForUpdates()
+    }, 1500)
+
     return () => {
-      eventSource.close()
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        console.log("Stopped polling")
+      }
     }
   }, [user])
 
@@ -101,6 +85,7 @@ export function Chatroom() {
   const loadMessages = async () => {
     try {
       setError(null)
+      console.log("Loading initial messages...")
       const response = await fetch("/api/messages")
 
       if (!response.ok) {
@@ -113,10 +98,70 @@ export function Chatroom() {
       }
 
       const data = await response.json()
+      console.log("Loaded messages:", data.messages?.length || 0)
       setMessages(data.messages || [])
+
+      // Update tracking references
+      if (data.messages && data.messages.length > 0) {
+        const latestMessage = data.messages[data.messages.length - 1]
+        lastMessageIdRef.current = latestMessage.id
+        lastTimestampRef.current = latestMessage.timestamp
+      }
     } catch (error) {
       console.error("Failed to load messages:", error)
       setError("Failed to load messages.")
+      setIsConnected(false)
+    }
+  }
+
+  const pollForUpdates = async () => {
+    try {
+      // Use timestamp-based polling for more reliability
+      const url = lastTimestampRef.current ? `/api/poll?lastTimestamp=${lastTimestampRef.current}` : "/api/poll"
+
+      const response = await fetch(url)
+
+      if (!response.ok) {
+        console.log("Polling request failed:", response.status)
+        return
+      }
+
+      const contentType = response.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/json")) {
+        console.log("Polling response is not JSON")
+        return
+      }
+
+      const data = await response.json()
+
+      if (data.hasNewMessages && data.messages && data.messages.length > 0) {
+        console.log("New messages received:", data.messages.length)
+        setMessages((prev) => {
+          // Filter out duplicates and add new messages
+          const existingIds = new Set(prev.map((msg) => msg.id))
+          const newMessages = data.messages.filter((msg: Message) => !existingIds.has(msg.id))
+
+          if (newMessages.length > 0) {
+            // Update tracking references
+            const latestMessage = newMessages[newMessages.length - 1]
+            lastMessageIdRef.current = latestMessage.id
+            lastTimestampRef.current = latestMessage.timestamp
+
+            return [...prev, ...newMessages]
+          }
+          return prev
+        })
+
+        // Clear any connection errors
+        if (error) {
+          setError(null)
+        }
+        setIsConnected(true)
+      }
+    } catch (error) {
+      console.log("Polling update failed:", error)
+      setIsConnected(false)
+      setError("Connection issues. Retrying...")
     }
   }
 
@@ -126,6 +171,7 @@ export function Chatroom() {
 
     try {
       setError(null)
+      console.log("Sending message...")
       const response = await fetch("/api/messages", {
         method: "POST",
         headers: {
@@ -134,6 +180,7 @@ export function Chatroom() {
         body: JSON.stringify({
           text: inputValue.trim(),
           username: user.username,
+          displayName: user.displayName,
           profilePicture: user.profilePicture,
         }),
       })
@@ -145,7 +192,19 @@ export function Chatroom() {
       const data = await response.json()
 
       if (data.success) {
+        console.log("Message sent successfully")
         setInputValue("")
+
+        // Add message locally for immediate feedback
+        setMessages((prev) => {
+          const exists = prev.some((msg) => msg.id === data.message.id)
+          if (!exists) {
+            lastMessageIdRef.current = data.message.id
+            lastTimestampRef.current = data.message.timestamp
+            return [...prev, data.message]
+          }
+          return prev
+        })
       }
     } catch (error) {
       console.error("Failed to send message:", error)
@@ -174,6 +233,10 @@ export function Chatroom() {
         throw new Error(data.error || "Failed to clear chat")
       }
 
+      // Clear messages locally
+      setMessages([])
+      lastMessageIdRef.current = null
+      lastTimestampRef.current = 0
       setShowClearModal(false)
     } catch (error: any) {
       console.error("Failed to clear chat:", error)
@@ -219,17 +282,15 @@ export function Chatroom() {
         <div className="bg-gradient-to-b from-gray-700/60 to-gray-800/40 p-4 border-b border-gray-600/50 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img
-                src="/placeholder.svg?height=32&width=32"
-                alt="HoradrimAI"
-                className="w-8 h-8 rounded-full border-2 border-red-500/50 shadow-sm"
-              />
+              <div className="w-8 h-8 rounded-full border-2 border-red-500/50 shadow-sm bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center">
+                <span className="text-sm font-bold text-red-400">VN</span>
+              </div>
               <div>
-                <h1 className="text-lg font-bold text-gray-100">HoradrimAI Chatroom</h1>
+                <h1 className="text-lg font-bold text-gray-100">Voltarian Networking</h1>
                 <p className="text-xs text-gray-300">
                   {isConnected ? (
                     <>
-                      Connected as {user.username}
+                      Connected as {user.displayName}
                       {user.isGuest && <span className="text-yellow-400 ml-1">(Guest)</span>}
                       {canClearChat && <span className="text-red-400 ml-1">(Admin)</span>}
                     </>
@@ -241,7 +302,10 @@ export function Chatroom() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <div className="text-xs text-gray-400">{messages.length} messages</div>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-400" : "bg-red-400"}`} />
+                <div className="text-xs text-gray-400">{messages.length} messages</div>
+              </div>
               <Button
                 onClick={handleLogout}
                 size="sm"
@@ -259,7 +323,7 @@ export function Chatroom() {
           <div className="space-y-3">
             {messages.length === 0 ? (
               <div className="text-center text-gray-400 py-8">
-                <p>Welcome to HoradrimAI Chatroom!</p>
+                <p>Welcome to Voltarian Networking!</p>
                 <p className="text-sm mt-2">Start a conversation by typing a message below.</p>
                 {canClearChat && (
                   <p className="text-xs mt-4 text-red-400">🔑 You have admin privileges - you can clear chat history</p>
@@ -272,10 +336,10 @@ export function Chatroom() {
                   <div className="flex items-center gap-2 mb-1">
                     <img
                       src={message.profilePicture || "/placeholder.svg"}
-                      alt={message.username}
+                      alt={message.displayName}
                       className="w-6 h-6 rounded-full border border-gray-600/50 shadow-sm"
                     />
-                    <span className="text-xs font-medium text-gray-200">{message.username}</span>
+                    <span className="text-xs font-medium text-gray-200">{message.displayName}</span>
                     <span className="text-xs text-gray-400">{formatTime(message.timestamp)}</span>
                   </div>
 

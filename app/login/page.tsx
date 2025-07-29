@@ -8,9 +8,45 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+// Generate profile picture SVG (same function as in API)
+function generateProfilePicture(identifier: string): string {
+  let hash = 0
+  for (let i = 0; i < identifier.length; i++) {
+    const char = identifier.charCodeAt(i)
+    hash = (hash << 5) - hash + char
+    hash = hash & hash
+  }
+
+  const colors = ["#ef4444", "#dc2626", "#b91c1c", "#991b1b", "#6b7280", "#4b5563", "#374151"]
+  const bgColor = colors[Math.abs(hash) % colors.length]
+  const patternColor = colors[(Math.abs(hash) + 3) % colors.length]
+
+  const patterns = [
+    `<circle cx="32" cy="32" r="20" fill="${patternColor}" opacity="0.8"/>`,
+    `<rect x="16" y="16" width="32" height="32" fill="${patternColor}" opacity="0.8"/>`,
+    `<polygon points="32,12 52,32 32,52 12,32" fill="${patternColor}" opacity="0.8"/>`,
+    `<polygon points="32,16 48,48 16,48" fill="${patternColor}" opacity="0.8"/>`,
+  ]
+
+  const pattern = patterns[Math.abs(hash) % patterns.length]
+
+  const svg = `
+    <svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" fill="${bgColor}"/>
+      ${pattern}
+      <text x="32" y="40" textAnchor="middle" fill="white" fontFamily="Arial, sans-serif" fontSize="24" fontWeight="bold">
+        ${identifier.charAt(0).toUpperCase()}
+      </text>
+    </svg>
+  `
+
+  return `data:image/svg+xml;base64,${btoa(svg)}`
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [displayName, setDisplayName] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const router = useRouter()
@@ -26,7 +62,7 @@ export default function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, displayName }),
       })
 
       const data = await response.json()
@@ -46,10 +82,12 @@ export default function LoginPage() {
   }
 
   const handleGuestLogin = () => {
+    const guestId = `Guest${Math.floor(Math.random() * 10000)}`
     const guestUser = {
-      username: `Guest${Math.floor(Math.random() * 10000)}`,
+      username: guestId.toLowerCase(),
+      displayName: guestId,
       email: null,
-      profilePicture: "/placeholder.svg?height=40&width=40",
+      profilePicture: generateProfilePicture(guestId),
       isGuest: true,
       isAdmin: false,
     }
@@ -61,13 +99,11 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-gradient-to-b from-gray-800 to-gray-900 border border-gray-700 rounded-xl shadow-xl p-8">
         <div className="text-center mb-8">
-          <img
-            src="/placeholder.svg?height=64&width=64"
-            alt="HoradrimAI"
-            className="w-16 h-16 mx-auto mb-4 rounded-full border-2 border-red-500/50"
-          />
-          <h1 className="text-2xl font-bold text-gray-100 mb-2">HoradrimAI Chatroom</h1>
-          <p className="text-gray-400">Sign in to join the conversation</p>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full border-2 border-red-500/50 bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center">
+            <span className="text-2xl font-bold text-red-400">VN</span>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-100 mb-2">Voltarian Networking</h1>
+          <p className="text-gray-400">Connect with the community</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -83,6 +119,20 @@ export default function LoginPage() {
               placeholder="your.email@example.com"
               className="mt-1 bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:border-red-500 focus:ring-red-500/20"
               required
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="displayName" className="text-gray-200">
+              Display Name
+            </Label>
+            <Input
+              id="displayName"
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="How others will see you"
+              className="mt-1 bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:border-red-500 focus:ring-red-500/20"
             />
           </div>
 
@@ -108,7 +158,7 @@ export default function LoginPage() {
             disabled={isLoading}
             className="w-full bg-gradient-to-b from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 border border-red-500 text-white"
           >
-            {isLoading ? "Signing in..." : "Sign In"}
+            {isLoading ? "Connecting..." : "Join Network"}
           </Button>
         </form>
 
@@ -133,8 +183,7 @@ export default function LoginPage() {
         </div>
 
         <div className="mt-6 text-center text-xs text-gray-500 space-y-1">
-          <p>✨ Any email works for login!</p>
-          <p>🔑 @voltaccept.com emails get admin privileges</p>
+          <p>✨ Any email works for registration!</p>
           <p className="text-gray-600">Demo: test@gmail.com / test123</p>
         </div>
       </div>
