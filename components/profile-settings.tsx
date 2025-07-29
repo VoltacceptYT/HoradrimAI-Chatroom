@@ -67,14 +67,22 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
     setIsLoading(true)
 
     try {
+      const password = localStorage.getItem("userPassword")
+      if (!password) {
+        throw new Error("Password not found in local storage")
+      }
+
+      console.log("Updating profile for:", user.email)
+
       const response = await fetch("/api/profile", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
         },
         body: JSON.stringify({
           email: user.email,
-          password: localStorage.getItem("userPassword"), // We'll need to store this
+          password: password,
           displayName,
           profilePicture: profileImage,
           bio,
@@ -83,10 +91,13 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
       })
 
       if (!response.ok) {
-        throw new Error("Failed to update profile")
+        const errorData = await response.json().catch(() => ({}))
+        console.error("Profile update failed:", response.status, errorData)
+        throw new Error(errorData.error || `Server error: ${response.status}`)
       }
 
       const data = await response.json()
+      console.log("Profile updated successfully:", data.user.displayName)
 
       // Update user data
       const updatedUser = {
@@ -104,7 +115,7 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
       onClose()
     } catch (error) {
       console.error("Failed to update profile:", error)
-      alert("Failed to update profile. Please try again.")
+      alert(`Failed to update profile: ${error.message || "Unknown error"}`)
     } finally {
       setIsLoading(false)
     }

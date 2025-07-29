@@ -119,3 +119,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
+
+// Add export for users array so it can be imported by other routes:
+export { users }
