@@ -1,18 +1,21 @@
 // Service Worker for push notifications and offline support
 
 const CACHE_NAME = "voltarian-networking-v1"
-const urlsToCache = ["/", "/login", "/offline", "/manifest.json"]
+const STATIC_CACHE_NAME = "voltarian-static-v1"
 
-// Install event - cache resources with error handling
+// Static resources to cache (pages, manifest, etc.)
+const staticUrlsToCache = ["/", "/login", "/offline", "/manifest.json"]
+
+// Install event - cache static resources only
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
-      .open(CACHE_NAME)
+      .open(STATIC_CACHE_NAME)
       .then((cache) => {
-        console.log("Opened cache")
+        console.log("Opened static cache")
         // Add URLs one by one to handle failures gracefully
         return Promise.allSettled(
-          urlsToCache.map((url) =>
+          staticUrlsToCache.map((url) =>
             cache.add(url).catch((err) => {
               console.warn(`Failed to cache ${url}:`, err)
               return null
@@ -21,11 +24,11 @@ self.addEventListener("install", (event) => {
         )
       })
       .then(() => {
-        console.log("Cache setup completed")
+        console.log("Static cache setup completed")
         self.skipWaiting()
       })
       .catch((error) => {
-        console.error("Cache setup failed:", error)
+        console.error("Static cache setup failed:", error)
       }),
   )
 })
@@ -38,7 +41,7 @@ self.addEventListener("activate", (event) => {
       .then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
+            if (cacheName !== STATIC_CACHE_NAME && cacheName !== CACHE_NAME) {
               console.log("Deleting old cache:", cacheName)
               return caches.delete(cacheName)
             }
@@ -51,7 +54,25 @@ self.addEventListener("activate", (event) => {
   )
 })
 
-// Fetch event - serve from cache when offline
+// Helper function to check if URL should be cached
+function shouldCache(url) {
+  // Never cache API routes - they need to be fresh
+  if (url.includes("/api/")) {
+    return false
+  }
+
+  // Never cache dynamic data
+  if (url.includes("_next/static") && url.includes("chunks")) {
+    return false
+  }
+
+  // Only cache static pages and assets
+  return (
+    url.includes("/") || url.includes(".js") || url.includes(".css") || url.includes(".png") || url.includes(".ico")
+  )
+}
+
+// Fetch event - smart caching strategy
 self.addEventListener("fetch", (event) => {
   // Skip non-GET requests
   if (event.request.method !== "GET") {
@@ -63,14 +84,37 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
+  const url = new URL(event.request.url)
+
+  // API routes - always fetch from network, never cache
+  if (url.pathname.startsWith("/api/")) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          return response
+        })
+        .catch((error) => {
+          console.log("API request failed:", error)
+          // Return a basic error response for API calls
+          return new Response(JSON.stringify({ error: "Network unavailable", offline: true }), {
+            status: 503,
+            statusText: "Service Unavailable",
+            headers: { "Content-Type": "application/json" },
+          })
+        }),
+    )
+    return
+  }
+
+  // Static resources - cache first, then network
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      // Return cached version if available
-      if (response) {
-        return response
+    caches.match(event.request).then((cachedResponse) => {
+      // Return cached version if available for static resources
+      if (cachedResponse) {
+        return cachedResponse
       }
 
-      // Try to fetch from network
+      // Fetch from network
       return fetch(event.request)
         .then((response) => {
           // Don't cache non-successful responses
@@ -78,17 +122,18 @@ self.addEventListener("fetch", (event) => {
             return response
           }
 
-          // Clone the response for caching
-          const responseToCache = response.clone()
-
-          caches
-            .open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache)
-            })
-            .catch((error) => {
-              console.warn("Failed to cache response:", error)
-            })
+          // Only cache static resources
+          if (shouldCache(event.request.url)) {
+            const responseToCache = response.clone()
+            caches
+              .open(STATIC_CACHE_NAME)
+              .then((cache) => {
+                cache.put(event.request, responseToCache)
+              })
+              .catch((error) => {
+                console.warn("Failed to cache response:", error)
+              })
+          }
 
           return response
         })

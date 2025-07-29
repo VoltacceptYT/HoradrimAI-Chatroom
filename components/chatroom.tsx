@@ -92,7 +92,16 @@ export function Chatroom() {
     try {
       setError(null)
       console.log("Loading initial messages...")
-      const response = await fetch("/api/messages")
+
+      // Add cache-busting parameter and headers to ensure fresh data
+      const response = await fetch(`/api/messages?t=${Date.now()}`, {
+        method: "GET",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      })
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -123,8 +132,15 @@ export function Chatroom() {
 
   const pollForUpdates = async () => {
     try {
-      // Always poll for all messages to ensure we don't miss any
-      const response = await fetch("/api/messages")
+      // Always poll for all messages with cache-busting to ensure fresh data
+      const response = await fetch(`/api/messages?t=${Date.now()}`, {
+        method: "GET",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      })
 
       if (!response.ok) {
         console.log("Polling request failed:", response.status)
@@ -197,6 +213,7 @@ export function Chatroom() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
         },
         body: JSON.stringify({
           text: inputValue.trim(),
@@ -259,6 +276,7 @@ export function Chatroom() {
         method: "DELETE",
         headers: {
           authorization: `Bearer ${user.email}`,
+          "Cache-Control": "no-cache, no-store, must-revalidate",
         },
       })
 
