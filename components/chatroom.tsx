@@ -171,6 +171,13 @@ export function Chatroom() {
     }
   }
 
+  // Handle image loading errors
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget
+    // Fallback to a default placeholder
+    img.src = "/placeholder.svg?height=24&width=24"
+  }
+
   // Only show clear button for @voltaccept.com emails
   const canClearChat = user?.email?.endsWith("@voltaccept.com")
 
@@ -298,9 +305,11 @@ export function Chatroom() {
                     {/* Profile */}
                     <div className="flex items-center gap-2 mb-1">
                       <img
-                        src={message.profilePicture || "/placeholder.svg?height=40&width=40"}
+                        src={message.profilePicture || "/placeholder.svg?height=24&width=24"}
                         alt={message.displayName}
                         className="w-6 h-6 rounded-full border themed-border shadow-sm"
+                        onError={handleImageError}
+                        loading="lazy"
                       />
                       <span className="text-xs font-medium themed-text">{message.displayName}</span>
                       <span className="text-xs themed-muted">{formatTime(message.timestamp)}</span>

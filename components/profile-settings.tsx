@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Camera, Save, X } from "lucide-react"
+import { Camera, Save, X, ImageIcon } from "lucide-react"
+import { processProfilePicture, validateImageFile, getCompressionStats } from "@/utils/image-processing"
 
 interface User {
   username: string
@@ -30,31 +31,61 @@ interface ProfileSettingsProps {
 export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProps) {
   const [displayName, setDisplayName] = useState(user.displayName)
   const [bio, setBio] = useState(user.bio || "")
-  const [profileImage, setProfileImage] = useState<string | null>(null)
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [processingProgress, setProcessingProgress] = useState("")
+  const [compressionStats, setCompressionStats] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (file) {
-      // Check file size (max 2MB)
-      if (file.size > 2 * 1024 * 1024) {
-        alert("Image size must be less than 2MB")
-        return
-      }
+    if (!file) return
 
-      // Check file type
-      if (!file.type.startsWith("image/")) {
-        alert("Please select an image file")
-        return
-      }
+    // Validate the file
+    const validation = validateImageFile(file)
+    if (!validation.valid) {
+      alert(validation.error)
+      return
+    }
 
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const base64 = e.target?.result as string
-        setProfileImage(base64)
-      }
-      reader.readAsDataURL(file)
+    setIsProcessing(true)
+    setProcessingProgress("Validating image...")
+    setCompressionStats("")
+
+    try {
+      // Show preview immediately
+      const previewUrl = URL.createObjectURL(file)
+      setProfileImageUrl(previewUrl)
+
+      setProcessingProgress("Compressing image...")
+
+      // Process the image
+      const originalSize = file.size
+      const processedUrl = await processProfilePicture(file, user.username)
+
+      // Calculate compression stats
+      const processedSize = Math.round((processedUrl.length * 3) / 4) // Approximate base64 size
+      const stats = getCompressionStats(originalSize, processedSize)
+      setCompressionStats(stats)
+
+      // Clean up preview URL
+      URL.revokeObjectURL(previewUrl)
+
+      // Set the final URL
+      setProfileImageUrl(processedUrl)
+      setProcessingProgress("Processing complete!")
+
+      console.log("Profile picture processed successfully")
+      console.log(`Original: ${(originalSize / 1024).toFixed(1)}KB → Processed: ${(processedSize / 1024).toFixed(1)}KB`)
+    } catch (error) {
+      console.error("Failed to process profile picture:", error)
+      alert(`Failed to process image: ${error.message}`)
+      setProfileImageUrl(null)
+      setCompressionStats("")
+    } finally {
+      setIsProcessing(false)
+      setTimeout(() => setProcessingProgress(""), 3000)
     }
   }
 
@@ -84,7 +115,7 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
           email: user.email,
           password: password,
           displayName,
-          profilePicture: profileImage,
+          profilePicture: profileImageUrl,
           bio,
           theme: user.theme || "default-dark",
         }),
@@ -104,8 +135,8 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
         ...user,
         displayName,
         bio,
-        customProfilePicture: profileImage,
-        profilePicture: profileImage || user.profilePicture,
+        customProfilePicture: profileImageUrl,
+        profilePicture: profileImageUrl || user.profilePicture,
       }
 
       // Update localStorage
@@ -121,7 +152,7 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
     }
   }
 
-  const currentProfilePicture = profileImage || user.customProfilePicture || user.profilePicture
+  const currentProfilePicture = profileImageUrl || user.customProfilePicture || user.profilePicture
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -141,6 +172,10 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
                 src={currentProfilePicture || "/placeholder.svg"}
                 alt="Profile"
                 className="w-24 h-24 rounded-full border-2 themed-border shadow-lg"
+                onError={(e) => {
+                  // Fallback to default if image fails to load
+                  e.currentTarget.src = "/placeholder.svg?height=96&width=96"
+                }}
               />
               <Button
                 onClick={() => fileInputRef.current?.click()}
@@ -151,12 +186,40 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
                   borderColor: "var(--theme-background)",
                   color: "var(--theme-background)",
                 }}
+                disabled={isProcessing}
               >
-                <Camera className="h-4 w-4" />
+                {isProcessing ? (
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4" />
+                )}
               </Button>
             </div>
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-            <p className="text-xs themed-muted mt-2">Click camera to change photo</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+              disabled={isProcessing}
+            />
+            <p className="text-xs themed-muted mt-2">
+              {isProcessing ? processingProgress : "Click camera to change photo"}
+            </p>
+            {compressionStats && <p className="text-xs themed-primary mt-1">✨ Optimized: {compressionStats}</p>}
+            {isProcessing && (
+              <div className="mt-2">
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="h-2 rounded-full transition-all duration-300"
+                    style={{
+                      backgroundColor: "var(--theme-primary)",
+                      width: processingProgress.includes("complete") ? "100%" : "60%",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Display Name */}
@@ -205,11 +268,22 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
             </div>
           </div>
 
+          {/* Image Processing Info */}
+          <div className="themed-surface-light rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <ImageIcon className="h-4 w-4 themed-primary" />
+              <span className="text-sm font-medium themed-text">Image Processing</span>
+            </div>
+            <p className="text-xs themed-muted">
+              Images are automatically compressed to 200x200px for optimal performance and storage efficiency.
+            </p>
+          </div>
+
           {/* Action Buttons */}
           <div className="flex gap-3">
             <Button
               onClick={handleSave}
-              disabled={isLoading || user.isGuest}
+              disabled={isLoading || user.isGuest || isProcessing}
               className="flex-1"
               style={{
                 background: "var(--theme-primary)",
