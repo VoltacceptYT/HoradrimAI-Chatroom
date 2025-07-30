@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,12 +51,6 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const router = useRouter()
 
-  // Apply default theme on login page
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("selectedTheme") || "default-dark"
-    document.body.classList.add(`theme-${savedTheme}`)
-  }, [])
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -95,7 +89,6 @@ export default function LoginPage() {
       displayName: guestId,
       email: null,
       profilePicture: generateProfilePicture(guestId),
-      theme: "default-dark",
       isGuest: true,
       isAdmin: false,
     }
@@ -104,22 +97,19 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen themed-gradient-bg flex items-center justify-center p-4">
-      <div className="w-full max-w-md themed-modal themed-border rounded-xl shadow-xl p-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-gradient-to-b from-gray-800 to-gray-900 border border-gray-700 rounded-xl shadow-xl p-8">
         <div className="text-center mb-8">
-          <div
-            className="w-16 h-16 mx-auto mb-4 rounded-full border-2 shadow-sm themed-gradient-surface flex items-center justify-center"
-            style={{ borderColor: "var(--theme-primary)" }}
-          >
-            <span className="text-2xl font-bold themed-primary">VN</span>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full border-2 border-red-500 bg-gradient-to-br from-gray-700 to-gray-800 shadow-sm flex items-center justify-center">
+            <span className="text-2xl font-bold text-red-400">VN</span>
           </div>
-          <h1 className="text-2xl font-bold themed-text mb-2">Voltarian Networking</h1>
-          <p className="themed-muted">Connect with the community</p>
+          <h1 className="text-2xl font-bold text-gray-100 mb-2">Voltarian Networking</h1>
+          <p className="text-gray-400">Connect with the community</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
           <div>
-            <Label htmlFor="email" className="themed-text">
+            <Label htmlFor="email" className="text-gray-100">
               Email
             </Label>
             <Input
@@ -128,13 +118,13 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="your.email@example.com"
-              className="mt-1 themed-input"
+              className="mt-1"
               required
             />
           </div>
 
           <div>
-            <Label htmlFor="displayName" className="themed-text">
+            <Label htmlFor="displayName" className="text-gray-100">
               Display Name
             </Label>
             <Input
@@ -143,12 +133,12 @@ export default function LoginPage() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="How others will see you"
-              className="mt-1 themed-input"
+              className="mt-1"
             />
           </div>
 
           <div>
-            <Label htmlFor="password" className="themed-text">
+            <Label htmlFor="password" className="text-gray-100">
               Password
             </Label>
             <Input
@@ -157,23 +147,14 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
-              className="mt-1 themed-input"
+              className="mt-1"
               required
             />
           </div>
 
-          {error && <div className="text-sm text-center themed-primary">{error}</div>}
+          {error && <div className="text-sm text-center text-red-400">{error}</div>}
 
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="w-full"
-            style={{
-              background: "var(--theme-primary)",
-              borderColor: "var(--theme-primary)",
-              color: "var(--theme-background)",
-            }}
-          >
+          <Button type="submit" disabled={isLoading} className="w-full bg-red-600 hover:bg-red-700 text-white">
             {isLoading ? "Connecting..." : "Join Network"}
           </Button>
         </form>
@@ -181,10 +162,10 @@ export default function LoginPage() {
         <div className="mt-6 text-center">
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t themed-border" />
+              <div className="w-full border-t border-gray-700" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 themed-modal themed-muted">Or</span>
+              <span className="px-2 bg-gradient-to-b from-gray-800 to-gray-900 text-gray-400">Or</span>
             </div>
           </div>
 
@@ -192,13 +173,13 @@ export default function LoginPage() {
             type="button"
             variant="outline"
             onClick={handleGuestLogin}
-            className="w-full mt-4 themed-button bg-transparent"
+            className="w-full mt-4 bg-transparent border-gray-600 text-gray-200 hover:bg-gray-700"
           >
             Continue as Guest
           </Button>
         </div>
 
-        <div className="mt-6 text-center text-xs themed-muted space-y-1">
+        <div className="mt-6 text-center text-xs text-gray-400 space-y-1">
           <p>✨ Any email works for registration!</p>
           <p>Demo: test@gmail.com / test123</p>
         </div>

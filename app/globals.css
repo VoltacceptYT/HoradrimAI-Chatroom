@@ -139,17 +139,17 @@
 }
 
 .chat-scrollbar::-webkit-scrollbar-track {
-  background: var(--theme-surface);
+  background: #374151;
   border-radius: 3px;
 }
 
 .chat-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--theme-muted);
+  background: #6b7280;
   border-radius: 3px;
 }
 
 .chat-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--theme-primary);
+  background: #ef4444;
 }
 
 /* Button theming */

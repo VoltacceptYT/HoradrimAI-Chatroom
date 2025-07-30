@@ -1,11 +1,10 @@
 # VoltaNET - Voltarian Networking
 
-A real-time chat application with custom theming and optimized profile pictures.
+A real-time chat application with optimized profile pictures.
 
 ## Features
 
 - **Real-time messaging** with reliable polling system
-- **Custom themes** with built-in and user-created options
 - **Optimized profile pictures** with automatic compression
 - **PWA support** with offline capabilities
 - **Admin controls** for @voltaccept.com users
@@ -63,3 +62,7 @@ Profile pictures are stored in localStorage with the following structure:
   "timestamp": 1234567890
 }
 \`\`\`
+\`\`\`
+
+```typescriptreact file="components/theme-selector.tsx" isDeleted="true"
+...deleted...

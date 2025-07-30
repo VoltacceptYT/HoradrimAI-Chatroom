@@ -1,15 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-interface CustomTheme {
-  id: string
-  name: string
-  primary: string
-  background: string
-  surface: string
-  text: string
-  createdAt: number
-}
-
 // Generate profile picture SVG
 function generateProfilePicture(identifier: string): string {
   let hash = 0
@@ -57,8 +47,6 @@ const users: any[] = [
     profilePicture: generateProfilePicture("admin@voltaccept.com"),
     customProfilePicture: null,
     bio: "System Administrator",
-    theme: "default-dark",
-    customThemes: [],
   },
   {
     id: "2",
@@ -69,8 +57,6 @@ const users: any[] = [
     profilePicture: generateProfilePicture("user@voltaccept.com"),
     customProfilePicture: null,
     bio: "Voltarian Community Member",
-    theme: "default-dark",
-    customThemes: [],
   },
   {
     id: "3",
@@ -81,8 +67,6 @@ const users: any[] = [
     profilePicture: generateProfilePicture("test@gmail.com"),
     customProfilePicture: null,
     bio: "Testing the platform",
-    theme: "default-dark",
-    customThemes: [],
   },
 ]
 
@@ -112,8 +96,6 @@ export async function POST(request: NextRequest) {
         profilePicture: generateProfilePicture(email),
         customProfilePicture: null,
         bio: "New member",
-        theme: "default-dark",
-        customThemes: [],
       }
       users.push(newUser)
       user = newUser

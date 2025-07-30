@@ -17,7 +17,6 @@ interface User {
   profilePicture: string
   customProfilePicture?: string
   bio?: string
-  theme?: string
   isGuest?: boolean
   isAdmin?: boolean
 }
@@ -117,7 +116,6 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
           displayName,
           profilePicture: profileImageUrl,
           bio,
-          theme: user.theme || "default-dark",
         }),
       })
 
@@ -156,10 +154,10 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="themed-modal border-2 themed-border rounded-xl shadow-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-gradient-to-b from-gray-800 to-gray-900 border-2 border-gray-700 rounded-xl shadow-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold themed-text">Profile Settings</h2>
-          <Button onClick={onClose} size="sm" variant="ghost" className="themed-muted hover:themed-text">
+          <h2 className="text-xl font-bold text-gray-100">Profile Settings</h2>
+          <Button onClick={onClose} size="sm" variant="ghost" className="text-gray-400 hover:text-white">
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -171,7 +169,7 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
               <img
                 src={currentProfilePicture || "/placeholder.svg"}
                 alt="Profile"
-                className="w-24 h-24 rounded-full border-2 themed-border shadow-lg"
+                className="w-24 h-24 rounded-full border-2 border-gray-600 shadow-lg"
                 onError={(e) => {
                   // Fallback to default if image fails to load
                   e.currentTarget.src = "/placeholder.svg?height=96&width=96"
@@ -180,16 +178,11 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
               <Button
                 onClick={() => fileInputRef.current?.click()}
                 size="sm"
-                className="absolute bottom-0 right-0 w-8 h-8 p-0 rounded-full border-2"
-                style={{
-                  backgroundColor: "var(--theme-primary)",
-                  borderColor: "var(--theme-background)",
-                  color: "var(--theme-background)",
-                }}
+                className="absolute bottom-0 right-0 w-8 h-8 p-0 rounded-full border-2 bg-red-600 hover:bg-red-700 border-gray-800 text-white"
                 disabled={isProcessing}
               >
                 {isProcessing ? (
-                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <Camera className="h-4 w-4" />
                 )}
@@ -203,17 +196,16 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
               className="hidden"
               disabled={isProcessing}
             />
-            <p className="text-xs themed-muted mt-2">
+            <p className="text-xs text-gray-400 mt-2">
               {isProcessing ? processingProgress : "Click camera to change photo"}
             </p>
-            {compressionStats && <p className="text-xs themed-primary mt-1">✨ Optimized: {compressionStats}</p>}
+            {compressionStats && <p className="text-xs text-red-400 mt-1">✨ Optimized: {compressionStats}</p>}
             {isProcessing && (
               <div className="mt-2">
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
-                    className="h-2 rounded-full transition-all duration-300"
+                    className="bg-red-600 h-2 rounded-full transition-all duration-300"
                     style={{
-                      backgroundColor: "var(--theme-primary)",
                       width: processingProgress.includes("complete") ? "100%" : "60%",
                     }}
                   />
@@ -224,7 +216,7 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
 
           {/* Display Name */}
           <div>
-            <Label htmlFor="displayName" className="themed-text">
+            <Label htmlFor="displayName" className="text-gray-100">
               Display Name
             </Label>
             <Input
@@ -232,13 +224,13 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="How others will see you"
-              className="mt-1 themed-input"
+              className="mt-1"
             />
           </div>
 
           {/* Bio */}
           <div>
-            <Label htmlFor="bio" className="themed-text">
+            <Label htmlFor="bio" className="text-gray-100">
               Bio
             </Label>
             <Textarea
@@ -246,35 +238,35 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               placeholder="Tell others about yourself..."
-              className="mt-1 themed-input min-h-[80px]"
+              className="mt-1 min-h-[80px]"
               maxLength={200}
             />
-            <p className="text-xs themed-muted mt-1">{bio.length}/200 characters</p>
+            <p className="text-xs text-gray-400 mt-1">{bio.length}/200 characters</p>
           </div>
 
           {/* User Info */}
-          <div className="themed-surface-light rounded-lg p-4 space-y-2">
+          <div className="bg-gray-700/50 rounded-lg p-4 space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="themed-muted">Email:</span>
-              <span className="themed-text">{user.email || "Guest"}</span>
+              <span className="text-gray-400">Email:</span>
+              <span className="text-gray-100">{user.email || "Guest"}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="themed-muted">Username:</span>
-              <span className="themed-text">{user.username}</span>
+              <span className="text-gray-400">Username:</span>
+              <span className="text-gray-100">{user.username}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="themed-muted">Role:</span>
-              <span className="themed-text">{user.isAdmin ? "Admin" : user.isGuest ? "Guest" : "Member"}</span>
+              <span className="text-gray-400">Role:</span>
+              <span className="text-gray-100">{user.isAdmin ? "Admin" : user.isGuest ? "Guest" : "Member"}</span>
             </div>
           </div>
 
           {/* Image Processing Info */}
-          <div className="themed-surface-light rounded-lg p-3">
+          <div className="bg-gray-700/50 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-2">
-              <ImageIcon className="h-4 w-4 themed-primary" />
-              <span className="text-sm font-medium themed-text">Image Processing</span>
+              <ImageIcon className="h-4 w-4 text-red-400" />
+              <span className="text-sm font-medium text-gray-100">Image Processing</span>
             </div>
-            <p className="text-xs themed-muted">
+            <p className="text-xs text-gray-400">
               Images are automatically compressed to 200x200px for optimal performance and storage efficiency.
             </p>
           </div>
@@ -284,19 +276,11 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
             <Button
               onClick={handleSave}
               disabled={isLoading || user.isGuest || isProcessing}
-              className="flex-1"
-              style={{
-                background: "var(--theme-primary)",
-                borderColor: "var(--theme-primary)",
-                color: "var(--theme-background)",
-              }}
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white"
             >
               {isLoading ? (
                 <>
-                  <div
-                    className="w-4 h-4 mr-2 border-2 border-t-transparent rounded-full animate-spin"
-                    style={{ borderColor: "var(--theme-background)" }}
-                  />
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Saving...
                 </>
               ) : (
@@ -306,13 +290,17 @@ export function ProfileSettings({ user, onClose, onUpdate }: ProfileSettingsProp
                 </>
               )}
             </Button>
-            <Button onClick={onClose} variant="outline" className="themed-button bg-transparent">
+            <Button
+              onClick={onClose}
+              variant="outline"
+              className="bg-transparent border-gray-600 text-gray-200 hover:bg-gray-700"
+            >
               Cancel
             </Button>
           </div>
 
           {user.isGuest && (
-            <p className="text-xs text-center themed-primary">Register with an email to customize your profile</p>
+            <p className="text-xs text-center text-red-400">Register with an email to customize your profile</p>
           )}
         </div>
       </div>
