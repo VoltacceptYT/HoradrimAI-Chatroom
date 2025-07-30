@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,6 +51,12 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const router = useRouter()
 
+  // Apply default theme on login page
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("selectedTheme") || "default-dark"
+    document.body.classList.add(`theme-${savedTheme}`)
+  }, [])
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -89,6 +95,7 @@ export default function LoginPage() {
       displayName: guestId,
       email: null,
       profilePicture: generateProfilePicture(guestId),
+      theme: "default-dark",
       isGuest: true,
       isAdmin: false,
     }
@@ -97,19 +104,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-gradient-to-b from-gray-800 to-gray-900 border border-gray-700 rounded-xl shadow-xl p-8">
+    <div className="min-h-screen themed-gradient-bg flex items-center justify-center p-4">
+      <div className="w-full max-w-md themed-modal themed-border rounded-xl shadow-xl p-8">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full border-2 border-red-500/50 bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center">
-            <span className="text-2xl font-bold text-red-400">VN</span>
+          <div
+            className="w-16 h-16 mx-auto mb-4 rounded-full border-2 shadow-sm themed-gradient-surface flex items-center justify-center"
+            style={{ borderColor: "var(--theme-primary)" }}
+          >
+            <span className="text-2xl font-bold themed-primary">VN</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-100 mb-2">Voltarian Networking</h1>
-          <p className="text-gray-400">Connect with the community</p>
+          <h1 className="text-2xl font-bold themed-text mb-2">Voltarian Networking</h1>
+          <p className="themed-muted">Connect with the community</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
           <div>
-            <Label htmlFor="email" className="text-gray-200">
+            <Label htmlFor="email" className="themed-text">
               Email
             </Label>
             <Input
@@ -118,13 +128,13 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="your.email@example.com"
-              className="mt-1 bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:border-red-500 focus:ring-red-500/20"
+              className="mt-1 themed-input"
               required
             />
           </div>
 
           <div>
-            <Label htmlFor="displayName" className="text-gray-200">
+            <Label htmlFor="displayName" className="themed-text">
               Display Name
             </Label>
             <Input
@@ -133,12 +143,12 @@ export default function LoginPage() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="How others will see you"
-              className="mt-1 bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:border-red-500 focus:ring-red-500/20"
+              className="mt-1 themed-input"
             />
           </div>
 
           <div>
-            <Label htmlFor="password" className="text-gray-200">
+            <Label htmlFor="password" className="themed-text">
               Password
             </Label>
             <Input
@@ -147,17 +157,22 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
-              className="mt-1 bg-gray-800 border-gray-600 text-gray-100 placeholder:text-gray-400 focus:border-red-500 focus:ring-red-500/20"
+              className="mt-1 themed-input"
               required
             />
           </div>
 
-          {error && <div className="text-red-400 text-sm text-center">{error}</div>}
+          {error && <div className="text-sm text-center themed-primary">{error}</div>}
 
           <Button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-gradient-to-b from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 border border-red-500 text-white"
+            className="w-full"
+            style={{
+              background: "var(--theme-primary)",
+              borderColor: "var(--theme-primary)",
+              color: "var(--theme-background)",
+            }}
           >
             {isLoading ? "Connecting..." : "Join Network"}
           </Button>
@@ -166,10 +181,10 @@ export default function LoginPage() {
         <div className="mt-6 text-center">
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-600" />
+              <div className="w-full border-t themed-border" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gradient-to-b from-gray-800 to-gray-900 text-gray-400">Or</span>
+              <span className="px-2 themed-modal themed-muted">Or</span>
             </div>
           </div>
 
@@ -177,15 +192,15 @@ export default function LoginPage() {
             type="button"
             variant="outline"
             onClick={handleGuestLogin}
-            className="w-full mt-4 bg-gradient-to-b from-gray-700 to-gray-800 border-gray-600 text-gray-200 hover:from-gray-600 hover:to-gray-700"
+            className="w-full mt-4 themed-button bg-transparent"
           >
             Continue as Guest
           </Button>
         </div>
 
-        <div className="mt-6 text-center text-xs text-gray-500 space-y-1">
+        <div className="mt-6 text-center text-xs themed-muted space-y-1">
           <p>✨ Any email works for registration!</p>
-          <p className="text-gray-600">Demo: test@gmail.com / test123</p>
+          <p>Demo: test@gmail.com / test123</p>
         </div>
       </div>
     </div>

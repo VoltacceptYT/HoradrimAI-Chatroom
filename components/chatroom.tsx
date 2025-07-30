@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Send, Trash2, LogOut, Settings, RefreshCw } from "lucide-react"
 import { InstallPrompt } from "@/components/install-prompt"
-import { PushNotifications } from "@/components/push-notifications"
 import { ProfileSettings } from "@/components/profile-settings"
+import { ThemeSelector } from "@/components/theme-selector"
 
 interface Message {
   id: string
@@ -27,6 +27,7 @@ interface User {
   profilePicture: string
   customProfilePicture?: string
   bio?: string
+  theme?: string
   isGuest?: boolean
   isAdmin?: boolean
 }
@@ -59,7 +60,67 @@ export function Chatroom() {
     } else {
       router.push("/login")
     }
+
+    // Apply saved theme for guests
+    const savedTheme = localStorage.getItem("selectedTheme")
+    if (savedTheme) {
+      applyTheme(savedTheme)
+    }
   }, [router])
+
+  // Apply theme function
+  const applyTheme = (themeId: string) => {
+    const themes = {
+      "default-dark": {
+        primary: "#ef4444",
+        background: "#111827",
+        surface: "#1f2937",
+        text: "#f9fafb",
+      },
+      "default-light": {
+        primary: "#3b82f6",
+        background: "#ffffff",
+        surface: "#f8fafc",
+        text: "#1f2937",
+      },
+      "warframe-dark": {
+        primary: "#00d4ff",
+        background: "#0a0a0f",
+        surface: "#1a1a2e",
+        text: "#eee6ff",
+      },
+      "warframe-light": {
+        primary: "#14b8a6",
+        background: "#f0f9ff",
+        surface: "#e0f2fe",
+        text: "#0f172a",
+      },
+      "neon-dark": {
+        primary: "#a855f7",
+        background: "#0c0a1a",
+        surface: "#1e1b3a",
+        text: "#f3e8ff",
+      },
+      "forest-light": {
+        primary: "#059669",
+        background: "#f7fdf7",
+        surface: "#ecfdf5",
+        text: "#064e3b",
+      },
+    }
+
+    const theme = themes[themeId as keyof typeof themes]
+    if (!theme) return
+
+    const root = document.documentElement
+    root.style.setProperty("--theme-primary", theme.primary)
+    root.style.setProperty("--theme-background", theme.background)
+    root.style.setProperty("--theme-surface", theme.surface)
+    root.style.setProperty("--theme-text", theme.text)
+
+    document.body.className = document.body.className.replace(/theme-\w+/g, "")
+    document.body.classList.add(`theme-${themeId}`)
+  }
 
   // Set up polling for real-time messages
   useEffect(() => {
@@ -236,25 +297,6 @@ export function Chatroom() {
       if (data.success) {
         console.log("Message sent successfully")
 
-        // Send push notifications to other users
-        if (!user.isGuest && user.email) {
-          try {
-            await fetch("/api/notifications/send", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                message: messageText,
-                senderName: user.displayName,
-                excludeUser: user.email,
-              }),
-            })
-          } catch (notificationError) {
-            console.log("Failed to send push notifications:", notificationError)
-          }
-        }
-
         // Immediately poll for updates to get the new message
         setTimeout(() => {
           pollForUpdates()
@@ -326,6 +368,12 @@ export function Chatroom() {
     setUser(updatedUser)
   }
 
+  const handleThemeChange = (theme: string) => {
+    if (user) {
+      setUser({ ...user, theme })
+    }
+  }
+
   const handleManualRefresh = async () => {
     setIsRefreshing(true)
     await loadMessages()
@@ -337,60 +385,78 @@ export function Chatroom() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 to-black">
-        <div className="text-gray-300">Loading...</div>
+      <div className="flex items-center justify-center min-h-screen themed-gradient-bg">
+        <div className="themed-text">Loading...</div>
       </div>
     )
   }
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex items-center justify-center p-0">
-        <div className="w-full h-screen max-w-none bg-gradient-to-b from-gray-800/85 to-gray-900/85 backdrop-blur-sm border-0 shadow-none flex flex-col">
+      <div className="min-h-screen themed-gradient-bg flex items-center justify-center p-0">
+        <div className="w-full h-screen max-w-none themed-gradient-surface backdrop-blur-sm border-0 shadow-none flex flex-col">
           {/* Header */}
-          <div className="bg-gradient-to-b from-gray-700/60 to-gray-800/40 p-4 border-b border-gray-600/50 shadow-sm">
+          <div className="themed-header p-4 border-b themed-border shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full border-2 border-red-500/50 shadow-sm bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center">
-                  <span className="text-sm font-bold text-red-400">VN</span>
+                <div
+                  className="w-8 h-8 rounded-full border-2 shadow-sm themed-gradient-surface flex items-center justify-center"
+                  style={{ borderColor: "var(--theme-primary)" }}
+                >
+                  <span className="text-sm font-bold themed-primary">VN</span>
                 </div>
                 <div>
-                  <h1 className="text-lg font-bold text-gray-100">Voltarian Networking</h1>
-                  <p className="text-xs text-gray-300">
+                  <h1 className="text-lg font-bold themed-text">Voltarian Networking</h1>
+                  <p className="text-xs themed-muted">
                     {isConnected ? (
                       <>
                         Connected as {user.displayName}
-                        {user.isGuest && <span className="text-yellow-400 ml-1">(Guest)</span>}
-                        {canClearChat && <span className="text-red-400 ml-1">(Admin)</span>}
+                        {user.isGuest && (
+                          <span className="ml-1" style={{ color: "var(--theme-primary)" }}>
+                            (Guest)
+                          </span>
+                        )}
+                        {canClearChat && (
+                          <span className="ml-1" style={{ color: "var(--theme-primary)" }}>
+                            (Admin)
+                          </span>
+                        )}
                       </>
                     ) : (
                       "Connecting..."
                     )}
-                    {error && <span className="text-red-400 ml-2">({error})</span>}
+                    {error && (
+                      <span className="ml-2" style={{ color: "var(--theme-primary)" }}>
+                        ({error})
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-400" : "bg-red-400"}`} />
-                  <div className="text-xs text-gray-400">{messages.length} messages</div>
+                  <div
+                    className={`w-2 h-2 rounded-full`}
+                    style={{ backgroundColor: isConnected ? "#10b981" : "var(--theme-primary)" }}
+                  />
+                  <div className="text-xs themed-muted">{messages.length} messages</div>
                 </div>
                 <Button
                   onClick={handleManualRefresh}
                   size="sm"
                   variant="ghost"
-                  className="text-gray-400 hover:text-white hover:bg-gray-700"
+                  className="themed-muted hover:themed-text hover:themed-surface"
                   disabled={isRefreshing}
                   title="Refresh messages"
                 >
                   <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
                 </Button>
-                <PushNotifications user={user} />
+                <ThemeSelector user={user} onThemeChange={handleThemeChange} />
                 <Button
                   onClick={() => setShowProfileSettings(true)}
                   size="sm"
                   variant="ghost"
-                  className="text-gray-400 hover:text-white hover:bg-gray-700"
+                  className="themed-muted hover:themed-text hover:themed-surface"
                   title="Profile Settings"
                 >
                   <Settings className="h-4 w-4" />
@@ -399,7 +465,7 @@ export function Chatroom() {
                   onClick={handleLogout}
                   size="sm"
                   variant="ghost"
-                  className="text-gray-400 hover:text-white hover:bg-gray-700"
+                  className="themed-muted hover:themed-text hover:themed-surface"
                 >
                   <LogOut className="h-4 w-4" />
                 </Button>
@@ -408,14 +474,17 @@ export function Chatroom() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 bg-gray-900/45 shadow-inner chat-scrollbar">
+          <div
+            className="flex-1 overflow-y-auto p-3 shadow-inner chat-scrollbar"
+            style={{ backgroundColor: "color-mix(in srgb, var(--theme-background) 45%, transparent)" }}
+          >
             <div className="space-y-3">
               {messages.length === 0 ? (
-                <div className="text-center text-gray-400 py-8">
+                <div className="text-center themed-muted py-8">
                   <p>Welcome to Voltarian Networking!</p>
                   <p className="text-sm mt-2">Start a conversation by typing a message below.</p>
                   {canClearChat && (
-                    <p className="text-xs mt-4 text-red-400">
+                    <p className="text-xs mt-4 themed-primary">
                       🔑 You have admin privileges - you can clear chat history
                     </p>
                   )}
@@ -433,23 +502,21 @@ export function Chatroom() {
                       <img
                         src={message.profilePicture || "/placeholder.svg?height=40&width=40"}
                         alt={message.displayName}
-                        className="w-6 h-6 rounded-full border border-gray-600/50 shadow-sm"
+                        className="w-6 h-6 rounded-full border themed-border shadow-sm"
                       />
-                      <span className="text-xs font-medium text-gray-200">{message.displayName}</span>
-                      <span className="text-xs text-gray-400">{formatTime(message.timestamp)}</span>
+                      <span className="text-xs font-medium themed-text">{message.displayName}</span>
+                      <span className="text-xs themed-muted">{formatTime(message.timestamp)}</span>
                     </div>
 
                     {/* Message */}
                     <div
-                      className={`${
+                      className={`backdrop-blur-sm border rounded-xl p-3 shadow-sm ${
                         message.username === user.username
-                          ? "bg-gradient-to-br from-gray-700/95 to-gray-800/95 border-gray-600/50"
-                          : "bg-gradient-to-br from-gray-800/95 to-gray-900/95 border-gray-700/50"
-                      } backdrop-blur-sm border rounded-xl ${
-                        message.username === user.username ? "rounded-tr-sm" : "rounded-tl-sm"
-                      } p-3 shadow-sm`}
+                          ? "themed-message-bubble-own rounded-tr-sm"
+                          : "themed-message-bubble rounded-tl-sm"
+                      }`}
                     >
-                      <div className="text-sm text-gray-100 whitespace-pre-wrap break-words">{message.text}</div>
+                      <div className="text-sm whitespace-pre-wrap break-words">{message.text}</div>
                     </div>
                   </div>
                 ))
@@ -459,17 +526,14 @@ export function Chatroom() {
           </div>
 
           {/* Input */}
-          <form
-            onSubmit={sendMessage}
-            className="p-3 bg-gradient-to-t from-gray-800/70 to-gray-700/70 border-t border-gray-600/50 shadow-sm"
-          >
+          <form onSubmit={sendMessage} className="p-3 themed-input-area border-t themed-border shadow-sm">
             <div className="flex gap-2">
               <Textarea
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Type your message here..."
-                className="flex-1 min-h-[40px] max-h-[120px] resize-none bg-gray-800/95 border-gray-600/50 focus:border-red-500 focus:ring-red-500/20 text-sm rounded-xl text-gray-100 placeholder:text-gray-400"
+                className="flex-1 min-h-[40px] max-h-[120px] resize-none themed-input text-sm rounded-xl"
                 disabled={!isConnected}
               />
               <div className="flex flex-col gap-2">
@@ -477,7 +541,7 @@ export function Chatroom() {
                   type="submit"
                   size="sm"
                   disabled={!inputValue.trim() || !isConnected}
-                  className="h-10 w-10 p-0 bg-gradient-to-b from-gray-700 to-gray-800 hover:from-red-600 hover:to-red-700 border border-gray-600 hover:border-red-500 text-gray-200 hover:text-white shadow-sm rounded-full transition-all duration-200"
+                  className="h-10 w-10 p-0 themed-button shadow-sm rounded-full transition-all duration-200"
                 >
                   <Send className="h-4 w-4" />
                 </Button>
@@ -487,7 +551,7 @@ export function Chatroom() {
                     size="sm"
                     variant="outline"
                     onClick={() => setShowClearModal(true)}
-                    className="h-10 w-10 p-0 bg-gradient-to-b from-gray-700 to-gray-800 hover:from-red-600 hover:to-red-700 border border-gray-600 hover:border-red-500 text-gray-200 hover:text-white shadow-sm rounded-full transition-all duration-200"
+                    className="h-10 w-10 p-0 themed-button shadow-sm rounded-full transition-all duration-200"
                     title="Clear chat history (Admin only)"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -501,24 +565,24 @@ export function Chatroom() {
         {/* Clear Confirmation Modal */}
         {showClearModal && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-gradient-to-b from-gray-800 to-gray-900 border-2 border-gray-700/50 rounded-xl shadow-xl p-6 max-w-sm mx-4">
-              <p className="text-gray-100 mb-4 font-medium">Are you sure you want to clear the chat history?</p>
-              <p className="text-gray-400 text-sm mb-4">
+            <div className="themed-modal border-2 themed-border rounded-xl shadow-xl p-6 max-w-sm mx-4">
+              <p className="themed-text mb-4 font-medium">Are you sure you want to clear the chat history?</p>
+              <p className="themed-muted text-sm mb-4">
                 This action cannot be undone and will remove all messages for everyone.
               </p>
               <div className="flex gap-3 justify-end">
-                <Button
-                  onClick={() => setShowClearModal(false)}
-                  variant="outline"
-                  size="sm"
-                  className="bg-gradient-to-b from-gray-700 to-gray-800 border-gray-600 text-gray-200 hover:from-gray-600 hover:to-gray-700 hover:border-gray-500"
-                >
+                <Button onClick={() => setShowClearModal(false)} variant="outline" size="sm" className="themed-button">
                   Cancel
                 </Button>
                 <Button
                   onClick={clearChat}
                   size="sm"
-                  className="bg-gradient-to-b from-red-600 to-red-700 border-red-500 text-white hover:from-red-500 hover:to-red-600 hover:border-red-400"
+                  className="themed-button"
+                  style={{
+                    background: "var(--theme-primary)",
+                    borderColor: "var(--theme-primary)",
+                    color: "var(--theme-background)",
+                  }}
                 >
                   Clear Chat
                 </Button>
