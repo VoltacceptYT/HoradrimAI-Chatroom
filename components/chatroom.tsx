@@ -10,15 +10,7 @@ import { Send, Trash2, LogOut, Settings, RefreshCw } from "lucide-react"
 import { InstallPrompt } from "@/components/install-prompt"
 import { ProfileSettings } from "@/components/profile-settings"
 import { ThemeSelector } from "@/components/theme-selector"
-
-interface Message {
-  id: string
-  text: string
-  username: string
-  displayName: string
-  profilePicture: string
-  timestamp: number
-}
+import { useMessages } from "@/hooks/use-messages"
 
 interface User {
   username: string
@@ -33,20 +25,18 @@ interface User {
 }
 
 export function Chatroom() {
-  const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState("")
   const [user, setUser] = useState<User | null>(null)
-  const [isConnected, setIsConnected] = useState(false)
   const [showClearModal, setShowClearModal] = useState(false)
   const [showProfileSettings, setShowProfileSettings] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const lastMessageIdRef = useRef<string | null>(null)
-  const lastTimestampRef = useRef<number>(0)
   const router = useRouter()
-  let messageText = "" // Declare messageText variable
+
+  // Use the messages hook
+  const { messages, isLoading, isConnected, error, isSending, sendMessage, clearChat, refreshMessages } = useMessages({
+    user,
+    pollingInterval: 1500,
+  })
 
   // Initialize user and check authentication
   useEffect(() => {
@@ -68,6 +58,11 @@ export function Chatroom() {
       applyTheme(savedTheme)
     }
   }, [router])
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
 
   // Apply theme function
   const applyTheme = (themeId: string) => {
@@ -123,208 +118,26 @@ export function Chatroom() {
     document.body.classList.add(`theme-${themeId}`)
   }
 
-  // Set up polling for real-time messages
-  useEffect(() => {
-    if (!user) return
-
-    console.log("Setting up polling for real-time updates...")
-    setIsConnected(true)
-
-    // Load initial messages
-    loadMessages()
-
-    // Start polling for new messages every 1 second for better responsiveness
-    pollingIntervalRef.current = setInterval(() => {
-      pollForUpdates()
-    }, 1000)
-
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current)
-        console.log("Stopped polling")
-      }
-    }
-  }, [user])
-
-  // Auto-scroll to bottom
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
-
-  const loadMessages = async () => {
-    try {
-      setError(null)
-      console.log("Loading initial messages...")
-
-      // Add cache-busting parameter and headers to ensure fresh data
-      const response = await fetch(`/api/messages?t=${Date.now()}`, {
-        method: "GET",
-        headers: {
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const contentType = response.headers.get("content-type")
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Response is not JSON")
-      }
-
-      const data = await response.json()
-      console.log("Loaded messages:", data.messages?.length || 0)
-
-      // Set messages directly from server response
-      setMessages(data.messages || [])
-    } catch (error) {
-      console.error("Failed to load messages:", error)
-      setError("Failed to load messages.")
-      setIsConnected(false)
-    }
-  }
-
-  const pollForUpdates = async () => {
-    try {
-      // Always poll for all messages with cache-busting to ensure fresh data
-      const response = await fetch(`/api/messages?t=${Date.now()}`, {
-        method: "GET",
-        headers: {
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      })
-
-      if (!response.ok) {
-        console.log("Polling request failed:", response.status)
-        return
-      }
-
-      const contentType = response.headers.get("content-type")
-      if (!contentType || !contentType.includes("application/json")) {
-        console.log("Polling response is not JSON")
-        return
-      }
-
-      const data = await response.json()
-      const newMessages = data.messages || []
-
-      // Always update with the complete message list from server
-      // The server handles proper ordering, so we trust its response
-      setMessages((prevMessages) => {
-        // If the message count or content has changed, update
-        if (prevMessages.length !== newMessages.length) {
-          console.log(`Message count changed: ${prevMessages.length} -> ${newMessages.length}`)
-          return newMessages
-        }
-
-        // Check if any message content has changed by comparing IDs
-        const prevIds = prevMessages.map((msg) => msg.id).join(",")
-        const newIds = newMessages.map((msg) => msg.id).join(",")
-
-        if (prevIds !== newIds) {
-          console.log("Message order or content changed, updating...")
-          return newMessages
-        }
-
-        // No changes detected
-        return prevMessages
-      })
-
-      // Clear any connection errors
-      if (error) {
-        setError(null)
-      }
-      setIsConnected(true)
-    } catch (error) {
-      console.log("Polling update failed:", error)
-      setIsConnected(false)
-      setError("Connection issues. Retrying...")
-    }
-  }
-
-  const sendMessage = async (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inputValue.trim() || !user) return
+    if (!inputValue.trim() || isSending) return
 
-    try {
-      setError(null)
-      console.log("Sending message...")
+    const messageText = inputValue.trim()
+    setInputValue("") // Clear input immediately
 
-      messageText = inputValue.trim() // Assign inputValue to messageText
-      setInputValue("") // Clear input immediately for better UX
-
-      const response = await fetch("/api/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-        },
-        body: JSON.stringify({
-          text: messageText,
-          username: user.username,
-          displayName: user.displayName,
-          profilePicture: user.customProfilePicture || user.profilePicture,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.success) {
-        console.log("Message sent successfully")
-
-        // Force an immediate refresh of messages
-        await loadMessages()
-      }
-    } catch (error) {
-      console.error("Failed to send message:", error)
-      setError("Failed to send message. Please try again.")
-      // Restore the input if sending failed
+    const success = await sendMessage(messageText)
+    if (!success) {
+      // Restore input if sending failed
       setInputValue(messageText)
     }
   }
 
-  const clearChat = async () => {
-    if (!user?.email?.endsWith("@voltaccept.com")) {
-      setError("Only @voltaccept.com users can clear the chat.")
-      setShowClearModal(false)
-      return
-    }
+  const handleClearChat = async () => {
+    const success = await clearChat()
+    setShowClearModal(false)
 
-    try {
-      setError(null)
-      const response = await fetch("/api/messages", {
-        method: "DELETE",
-        headers: {
-          authorization: `Bearer ${user.email}`,
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-        },
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to clear chat")
-      }
-
-      // Clear messages locally
-      setMessages([])
-      lastMessageIdRef.current = null
-      lastTimestampRef.current = 0
-      setShowClearModal(false)
-
+    if (success) {
       console.log("Chat cleared successfully")
-    } catch (error: any) {
-      console.error("Failed to clear chat:", error)
-      setError(error.message || "Failed to clear chat.")
-      setShowClearModal(false)
     }
   }
 
@@ -337,7 +150,7 @@ export function Chatroom() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      sendMessage(e)
+      handleSendMessage(e)
     }
   }
 
@@ -356,12 +169,6 @@ export function Chatroom() {
     if (user) {
       setUser({ ...user, theme })
     }
-  }
-
-  const handleManualRefresh = async () => {
-    setIsRefreshing(true)
-    await loadMessages()
-    setIsRefreshing(false)
   }
 
   // Only show clear button for @voltaccept.com emails
@@ -392,7 +199,9 @@ export function Chatroom() {
                 <div>
                   <h1 className="text-lg font-bold themed-text">Voltarian Networking</h1>
                   <p className="text-xs themed-muted">
-                    {isConnected ? (
+                    {isLoading ? (
+                      "Loading..."
+                    ) : isConnected ? (
                       <>
                         Connected as {user.displayName}
                         {user.isGuest && (
@@ -426,14 +235,14 @@ export function Chatroom() {
                   <div className="text-xs themed-muted">{messages.length} messages</div>
                 </div>
                 <Button
-                  onClick={handleManualRefresh}
+                  onClick={refreshMessages}
                   size="sm"
                   variant="ghost"
                   className="themed-muted hover:themed-text hover:themed-surface"
-                  disabled={isRefreshing}
+                  disabled={isLoading}
                   title="Refresh messages"
                 >
-                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
                 </Button>
                 <ThemeSelector user={user} onThemeChange={handleThemeChange} />
                 <Button
@@ -463,7 +272,12 @@ export function Chatroom() {
             style={{ backgroundColor: "color-mix(in srgb, var(--theme-background) 45%, transparent)" }}
           >
             <div className="space-y-3">
-              {messages.length === 0 ? (
+              {isLoading ? (
+                <div className="text-center themed-muted py-8">
+                  <div className="animate-spin w-6 h-6 border-2 border-current border-t-transparent rounded-full mx-auto mb-2" />
+                  <p>Loading messages...</p>
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="text-center themed-muted py-8">
                   <p>Welcome to Voltarian Networking!</p>
                   <p className="text-sm mt-2">Start a conversation by typing a message below.</p>
@@ -510,7 +324,7 @@ export function Chatroom() {
           </div>
 
           {/* Input */}
-          <form onSubmit={sendMessage} className="p-3 themed-input-area border-t themed-border shadow-sm">
+          <form onSubmit={handleSendMessage} className="p-3 themed-input-area border-t themed-border shadow-sm">
             <div className="flex gap-2">
               <Textarea
                 value={inputValue}
@@ -518,16 +332,20 @@ export function Chatroom() {
                 onKeyDown={handleKeyDown}
                 placeholder="Type your message here..."
                 className="flex-1 min-h-[40px] max-h-[120px] resize-none themed-input text-sm rounded-xl"
-                disabled={!isConnected}
+                disabled={!isConnected || isSending}
               />
               <div className="flex flex-col gap-2">
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={!inputValue.trim() || !isConnected}
+                  disabled={!inputValue.trim() || !isConnected || isSending}
                   className="h-10 w-10 p-0 themed-button shadow-sm rounded-full transition-all duration-200"
                 >
-                  <Send className="h-4 w-4" />
+                  {isSending ? (
+                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
                 </Button>
                 {canClearChat && (
                   <Button
@@ -559,7 +377,7 @@ export function Chatroom() {
                   Cancel
                 </Button>
                 <Button
-                  onClick={clearChat}
+                  onClick={handleClearChat}
                   size="sm"
                   className="themed-button"
                   style={{
