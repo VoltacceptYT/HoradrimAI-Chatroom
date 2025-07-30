@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Send, Trash2, LogOut, Settings, RefreshCw } from "lucide-react"
@@ -12,6 +12,7 @@ import { ProfileSettings } from "@/components/profile-settings"
 import { ServerSelector } from "@/components/server-selector"
 import { ProfileViewer } from "@/components/profile-viewer"
 import { useMessages } from "@/hooks/use-messages"
+import { InviteHandler } from "@/components/invite-handler"
 
 interface User {
   username: string
@@ -33,7 +34,6 @@ export function Chatroom() {
   const [profileViewerUsername, setProfileViewerUsername] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   // Use the messages hook with current server
   const { messages, isLoading, isConnected, error, isSending, sendMessage, clearChat, refreshMessages } = useMessages({
@@ -57,52 +57,10 @@ export function Chatroom() {
     }
   }, [router])
 
-  // Handle invite links
-  useEffect(() => {
-    const inviteCode = searchParams.get("invite")
-    if (inviteCode && user && !user.isGuest) {
-      handleInviteLink(inviteCode)
-    }
-  }, [searchParams, user])
-
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
-
-  const handleInviteLink = async (inviteCode: string) => {
-    if (!user?.email || user.isGuest) {
-      alert("Please register to join servers via invite links")
-      return
-    }
-
-    try {
-      const response = await fetch("/api/servers", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          inviteCode,
-          userEmail: user.email,
-          username: user.username,
-          displayName: user.displayName,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        setCurrentServerId(data.server.id)
-        // Remove invite from URL
-        window.history.replaceState({}, document.title, window.location.pathname)
-      } else {
-        alert(data.error || "Failed to join server")
-      }
-    } catch (error) {
-      alert("Failed to process invite link")
-    }
-  }
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -176,6 +134,7 @@ export function Chatroom() {
   return (
     <>
       <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex">
+        <InviteHandler user={user} onServerChange={setCurrentServerId} />
         {/* Server Selector Sidebar */}
         <ServerSelector user={user} currentServerId={currentServerId} onServerChange={setCurrentServerId} />
 
