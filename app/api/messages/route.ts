@@ -15,11 +15,12 @@ interface Message {
 // Get messages
 export async function GET() {
   try {
-    // Return a deep copy of messages to prevent reference issues
-    const messagesToReturn = JSON.parse(JSON.stringify(memoryMessages))
+    // Return messages in consistent order (newest last for display)
+    const messagesToReturn = [...memoryMessages].reverse()
     console.log(`Retrieved ${messagesToReturn.length} messages from memory`)
+
     return NextResponse.json({
-      messages: messagesToReturn.slice().reverse(),
+      messages: messagesToReturn,
     })
   } catch (error) {
     console.error("Failed to get messages:", error)
@@ -48,7 +49,8 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("Storing message in memory:", message.id)
-    // Add message to the beginning of the array (newest first)
+
+    // Add message to the beginning of the array (newest first in storage)
     memoryMessages.unshift(message)
 
     // Keep last 100 messages
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest) {
       memoryMessages = memoryMessages.slice(0, 100)
     }
 
-    console.log("Message stored successfully in memory")
+    console.log(`Message stored successfully. Total messages: ${memoryMessages.length}`)
 
     return NextResponse.json({ success: true, message })
   } catch (error) {

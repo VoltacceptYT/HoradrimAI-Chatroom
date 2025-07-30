@@ -46,6 +46,7 @@ export function Chatroom() {
   const lastMessageIdRef = useRef<string | null>(null)
   const lastTimestampRef = useRef<number>(0)
   const router = useRouter()
+  let messageText = "" // Declare messageText variable
 
   // Initialize user and check authentication
   useEffect(() => {
@@ -176,15 +177,9 @@ export function Chatroom() {
 
       const data = await response.json()
       console.log("Loaded messages:", data.messages?.length || 0)
-      setMessages(data.messages || [])
 
-      // Update tracking references
-      if (data.messages && data.messages.length > 0) {
-        const latestMessage = data.messages[data.messages.length - 1]
-        lastMessageIdRef.current = latestMessage.id
-        lastTimestampRef.current = latestMessage.timestamp
-        console.log("Set initial tracking - ID:", latestMessage.id, "Timestamp:", latestMessage.timestamp)
-      }
+      // Set messages directly from server response
+      setMessages(data.messages || [])
     } catch (error) {
       console.error("Failed to load messages:", error)
       setError("Failed to load messages.")
@@ -218,36 +213,25 @@ export function Chatroom() {
       const data = await response.json()
       const newMessages = data.messages || []
 
-      // Check if we have new messages by comparing with current state
+      // Always update with the complete message list from server
+      // The server handles proper ordering, so we trust its response
       setMessages((prevMessages) => {
-        // If we have no previous messages, just set the new ones
-        if (prevMessages.length === 0) {
-          if (newMessages.length > 0) {
-            const latestMessage = newMessages[newMessages.length - 1]
-            lastMessageIdRef.current = latestMessage.id
-            lastTimestampRef.current = latestMessage.timestamp
-            console.log("Initial messages loaded via polling:", newMessages.length)
-          }
+        // If the message count or content has changed, update
+        if (prevMessages.length !== newMessages.length) {
+          console.log(`Message count changed: ${prevMessages.length} -> ${newMessages.length}`)
           return newMessages
         }
 
-        // Check if there are actually new messages
-        const prevIds = new Set(prevMessages.map((msg) => msg.id))
-        const actuallyNewMessages = newMessages.filter((msg) => !prevIds.has(msg.id))
+        // Check if any message content has changed by comparing IDs
+        const prevIds = prevMessages.map((msg) => msg.id).join(",")
+        const newIds = newMessages.map((msg) => msg.id).join(",")
 
-        if (actuallyNewMessages.length > 0) {
-          console.log("New messages detected:", actuallyNewMessages.length)
-
-          // Update tracking references
-          const latestMessage = newMessages[newMessages.length - 1]
-          lastMessageIdRef.current = latestMessage.id
-          lastTimestampRef.current = latestMessage.timestamp
-
-          // Return all messages (the server already handles ordering)
+        if (prevIds !== newIds) {
+          console.log("Message order or content changed, updating...")
           return newMessages
         }
 
-        // No new messages, return previous state
+        // No changes detected
         return prevMessages
       })
 
@@ -271,7 +255,7 @@ export function Chatroom() {
       setError(null)
       console.log("Sending message...")
 
-      const messageText = inputValue.trim()
+      messageText = inputValue.trim() // Assign inputValue to messageText
       setInputValue("") // Clear input immediately for better UX
 
       const response = await fetch("/api/messages", {
@@ -297,14 +281,14 @@ export function Chatroom() {
       if (data.success) {
         console.log("Message sent successfully")
 
-        // Immediately poll for updates to get the new message
-        setTimeout(() => {
-          pollForUpdates()
-        }, 100)
+        // Force an immediate refresh of messages
+        await loadMessages()
       }
     } catch (error) {
       console.error("Failed to send message:", error)
       setError("Failed to send message. Please try again.")
+      // Restore the input if sending failed
+      setInputValue(messageText)
     }
   }
 

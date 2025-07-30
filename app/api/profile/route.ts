@@ -1,5 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+interface CustomTheme {
+  id: string
+  name: string
+  primary: string
+  background: string
+  surface: string
+  text: string
+  createdAt: number
+}
+
 // In-memory storage for users (shared with login route)
 // We'll maintain our own copy here to avoid import issues
 let users: any[] = [
@@ -12,7 +22,8 @@ let users: any[] = [
     profilePicture: null,
     customProfilePicture: null,
     bio: "System Administrator",
-    theme: "dark",
+    theme: "default-dark",
+    customThemes: [],
   },
   {
     id: "2",
@@ -23,7 +34,8 @@ let users: any[] = [
     profilePicture: null,
     customProfilePicture: null,
     bio: "Voltarian Community Member",
-    theme: "dark",
+    theme: "default-dark",
+    customThemes: [],
   },
   {
     id: "3",
@@ -34,7 +46,8 @@ let users: any[] = [
     profilePicture: null,
     customProfilePicture: null,
     bio: "Testing the platform",
-    theme: "dark",
+    theme: "default-dark",
+    customThemes: [],
   },
 ]
 
@@ -56,7 +69,7 @@ try {
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, displayName, profilePicture, bio, theme } = await request.json()
+    const { email, password, displayName, profilePicture, bio, theme, customThemes } = await request.json()
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
@@ -84,7 +97,8 @@ export async function POST(request: NextRequest) {
         profilePicture: null,
         customProfilePicture: profilePicture || null,
         bio: bio || "New member",
-        theme: theme || "dark",
+        theme: theme || "default-dark",
+        customThemes: customThemes || [],
       }
 
       users.push(newUser)
@@ -106,6 +120,7 @@ export async function POST(request: NextRequest) {
     if (profilePicture) users[userIndex].customProfilePicture = profilePicture
     if (bio) users[userIndex].bio = bio
     if (theme) users[userIndex].theme = theme
+    if (customThemes) users[userIndex].customThemes = customThemes
 
     console.log("Updated user:", users[userIndex].username)
 
