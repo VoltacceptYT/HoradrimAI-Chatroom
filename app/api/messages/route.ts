@@ -1,7 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-// Simple in-memory message storage
-let messages: Message[] = []
+// Simple in-memory message storage - now organized by server
+const messagesByServer: Record<string, Message[]> = {
+  general: [], // Default general server
+}
 let messageCounter = 0
 
 interface Message {
@@ -11,6 +13,7 @@ interface Message {
   displayName: string
   profilePicture: string
   timestamp: number
+  serverId: string
 }
 
 // Helper function to generate unique message ID
@@ -19,33 +22,43 @@ function generateMessageId(): string {
   return `msg_${Date.now()}_${messageCounter}`
 }
 
-// GET - Retrieve all messages
+// GET - Retrieve messages for a server
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url)
+    const serverId = url.searchParams.get("serverId") || "general"
     const since = url.searchParams.get("since")
+
+    // Initialize server messages if not exists
+    if (!messagesByServer[serverId]) {
+      messagesByServer[serverId] = []
+    }
+
+    const serverMessages = messagesByServer[serverId]
 
     // If 'since' parameter is provided, return only newer messages
     if (since) {
       const sinceTimestamp = Number.parseInt(since)
-      const newMessages = messages.filter((msg) => msg.timestamp > sinceTimestamp)
+      const newMessages = serverMessages.filter((msg) => msg.timestamp > sinceTimestamp)
 
       return NextResponse.json({
         success: true,
         messages: newMessages,
-        total: messages.length,
+        total: serverMessages.length,
         hasNew: newMessages.length > 0,
+        serverId,
       })
     }
 
     // Return all messages (most recent first for display)
-    const sortedMessages = [...messages].sort((a, b) => a.timestamp - b.timestamp)
+    const sortedMessages = [...serverMessages].sort((a, b) => a.timestamp - b.timestamp)
 
     return NextResponse.json({
       success: true,
       messages: sortedMessages,
-      total: messages.length,
+      total: serverMessages.length,
       hasNew: false,
+      serverId,
     })
   } catch (error) {
     console.error("Error retrieving messages:", error)
@@ -62,11 +75,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Send a new message
+// POST - Send a new message to a server
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { text, username, displayName, profilePicture } = body
+    const { text, username, displayName, profilePicture, serverId = "general" } = body
 
     // Validate required fields
     if (!text || !username) {
@@ -79,6 +92,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Initialize server messages if not exists
+    if (!messagesByServer[serverId]) {
+      messagesByServer[serverId] = []
+    }
+
     // Create new message
     const newMessage: Message = {
       id: generateMessageId(),
@@ -87,23 +105,25 @@ export async function POST(request: NextRequest) {
       displayName: displayName?.trim() || username.trim(),
       profilePicture: profilePicture || "/placeholder.svg?height=40&width=40",
       timestamp: Date.now(),
+      serverId,
     }
 
-    // Add to messages array
-    messages.push(newMessage)
+    // Add to server messages array
+    messagesByServer[serverId].push(newMessage)
 
-    // Keep only last 100 messages to prevent memory issues
-    if (messages.length > 100) {
-      messages = messages.slice(-100)
+    // Keep only last 100 messages per server to prevent memory issues
+    if (messagesByServer[serverId].length > 100) {
+      messagesByServer[serverId] = messagesByServer[serverId].slice(-100)
     }
 
-    console.log(`Message sent by ${newMessage.username}: ${newMessage.text.substring(0, 50)}...`)
-    console.log(`Total messages: ${messages.length}`)
+    console.log(`Message sent by ${newMessage.username} in ${serverId}: ${newMessage.text.substring(0, 50)}...`)
+    console.log(`Total messages in ${serverId}: ${messagesByServer[serverId].length}`)
 
     return NextResponse.json({
       success: true,
       message: newMessage,
-      total: messages.length,
+      total: messagesByServer[serverId].length,
+      serverId,
     })
   } catch (error) {
     console.error("Error sending message:", error)
@@ -117,9 +137,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - Clear all messages (admin only)
+// DELETE - Clear all messages in a server (admin only)
 export async function DELETE(request: NextRequest) {
   try {
+    const url = new URL(request.url)
+    const serverId = url.searchParams.get("serverId") || "general"
+
     // Check authorization
     const authHeader = request.headers.get("authorization")
     if (!authHeader) {
@@ -143,16 +166,16 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Clear all messages
-    const previousCount = messages.length
-    messages = []
-    messageCounter = 0
+    // Clear server messages
+    const previousCount = messagesByServer[serverId]?.length || 0
+    messagesByServer[serverId] = []
 
-    console.log(`Chat cleared by admin: ${userEmail} (${previousCount} messages removed)`)
+    console.log(`Chat cleared in ${serverId} by admin: ${userEmail} (${previousCount} messages removed)`)
 
     return NextResponse.json({
       success: true,
       cleared: previousCount,
+      serverId,
     })
   } catch (error) {
     console.error("Error clearing messages:", error)
@@ -167,4 +190,4 @@ export async function DELETE(request: NextRequest) {
 }
 
 // Export messages for other routes if needed
-export { messages }
+export { messagesByServer }

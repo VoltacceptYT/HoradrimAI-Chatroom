@@ -3,12 +3,14 @@
 import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Send, Trash2, LogOut, Settings, RefreshCw } from "lucide-react"
 import { InstallPrompt } from "@/components/install-prompt"
 import { ProfileSettings } from "@/components/profile-settings"
+import { ServerSelector } from "@/components/server-selector"
+import { ProfileViewer } from "@/components/profile-viewer"
 import { useMessages } from "@/hooks/use-messages"
 
 interface User {
@@ -25,14 +27,18 @@ interface User {
 export function Chatroom() {
   const [inputValue, setInputValue] = useState("")
   const [user, setUser] = useState<User | null>(null)
+  const [currentServerId, setCurrentServerId] = useState("general")
   const [showClearModal, setShowClearModal] = useState(false)
   const [showProfileSettings, setShowProfileSettings] = useState(false)
+  const [profileViewerUsername, setProfileViewerUsername] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
 
-  // Use the messages hook
+  // Use the messages hook with current server
   const { messages, isLoading, isConnected, error, isSending, sendMessage, clearChat, refreshMessages } = useMessages({
     user,
+    serverId: currentServerId,
     pollingInterval: 1500,
   })
 
@@ -51,10 +57,52 @@ export function Chatroom() {
     }
   }, [router])
 
+  // Handle invite links
+  useEffect(() => {
+    const inviteCode = searchParams.get("invite")
+    if (inviteCode && user && !user.isGuest) {
+      handleInviteLink(inviteCode)
+    }
+  }, [searchParams, user])
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
+
+  const handleInviteLink = async (inviteCode: string) => {
+    if (!user?.email || user.isGuest) {
+      alert("Please register to join servers via invite links")
+      return
+    }
+
+    try {
+      const response = await fetch("/api/servers", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inviteCode,
+          userEmail: user.email,
+          username: user.username,
+          displayName: user.displayName,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setCurrentServerId(data.server.id)
+        // Remove invite from URL
+        window.history.replaceState({}, document.title, window.location.pathname)
+      } else {
+        alert(data.error || "Failed to join server")
+      }
+    } catch (error) {
+      alert("Failed to process invite link")
+    }
+  }
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -103,6 +151,10 @@ export function Chatroom() {
     setUser(updatedUser)
   }
 
+  const handleViewProfile = (username: string) => {
+    setProfileViewerUsername(username)
+  }
+
   // Handle image loading errors
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget
@@ -123,8 +175,12 @@ export function Chatroom() {
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex items-center justify-center p-0">
-        <div className="w-full h-screen max-w-none bg-gradient-to-b from-gray-800/50 to-gray-900/50 backdrop-blur-sm border-0 shadow-none flex flex-col">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex">
+        {/* Server Selector Sidebar */}
+        <ServerSelector user={user} currentServerId={currentServerId} onServerChange={setCurrentServerId} />
+
+        {/* Main Chat Area */}
+        <div className="flex-1 flex flex-col">
           {/* Header */}
           <div className="bg-gradient-to-b from-gray-800/60 to-gray-900/40 backdrop-blur-sm p-4 border-b border-gray-700/50 shadow-sm">
             <div className="flex items-center justify-between">
@@ -196,7 +252,7 @@ export function Chatroom() {
                 </div>
               ) : messages.length === 0 ? (
                 <div className="text-center text-gray-400 py-8">
-                  <p>Welcome to Voltarian Networking!</p>
+                  <p>Welcome to this server!</p>
                   <p className="text-sm mt-2">Start a conversation by typing a message below.</p>
                   {canClearChat && (
                     <p className="text-xs mt-4 text-red-400">
@@ -214,14 +270,21 @@ export function Chatroom() {
                   >
                     {/* Profile */}
                     <div className="flex items-center gap-2 mb-1">
-                      <img
-                        src={message.profilePicture || "/placeholder.svg?height=24&width=24"}
-                        alt={message.displayName}
-                        className="w-6 h-6 rounded-full border border-gray-600 shadow-sm"
-                        onError={handleImageError}
-                        loading="lazy"
-                      />
-                      <span className="text-xs font-medium text-gray-100">{message.displayName}</span>
+                      <button
+                        onClick={() => handleViewProfile(message.username)}
+                        className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                      >
+                        <img
+                          src={message.profilePicture || "/placeholder.svg?height=24&width=24"}
+                          alt={message.displayName}
+                          className="w-6 h-6 rounded-full border border-gray-600 shadow-sm"
+                          onError={handleImageError}
+                          loading="lazy"
+                        />
+                        <span className="text-xs font-medium text-gray-100 hover:text-red-400 transition-colors">
+                          {message.displayName}
+                        </span>
+                      </button>
                       <span className="text-xs text-gray-400">{formatTime(message.timestamp)}</span>
                     </div>
 
@@ -292,7 +355,7 @@ export function Chatroom() {
             <div className="bg-gradient-to-b from-gray-800 to-gray-900 border-2 border-gray-700 rounded-xl shadow-xl p-6 max-w-sm mx-4">
               <p className="text-gray-100 mb-4 font-medium">Are you sure you want to clear the chat history?</p>
               <p className="text-gray-400 text-sm mb-4">
-                This action cannot be undone and will remove all messages for everyone.
+                This action cannot be undone and will remove all messages for everyone in this server.
               </p>
               <div className="flex gap-3 justify-end">
                 <Button
@@ -314,6 +377,11 @@ export function Chatroom() {
         {/* Profile Settings Modal */}
         {showProfileSettings && (
           <ProfileSettings user={user} onClose={() => setShowProfileSettings(false)} onUpdate={handleProfileUpdate} />
+        )}
+
+        {/* Profile Viewer Modal */}
+        {profileViewerUsername && (
+          <ProfileViewer username={profileViewerUsername} onClose={() => setProfileViewerUsername(null)} />
         )}
       </div>
 

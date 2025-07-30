@@ -9,6 +9,7 @@ interface Message {
   displayName: string
   profilePicture: string
   timestamp: number
+  serverId: string
 }
 
 interface User {
@@ -23,10 +24,11 @@ interface User {
 
 interface UseMessagesOptions {
   user: User | null
+  serverId: string
   pollingInterval?: number
 }
 
-export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions) {
+export function useMessages({ user, serverId, pollingInterval = 2000 }: UseMessagesOptions) {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isConnected, setIsConnected] = useState(false)
@@ -36,15 +38,27 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const lastTimestampRef = useRef<number>(0)
   const isInitialLoadRef = useRef(true)
+  const currentServerIdRef = useRef<string>(serverId)
+
+  // Reset when server changes
+  useEffect(() => {
+    if (currentServerIdRef.current !== serverId) {
+      setMessages([])
+      setIsLoading(true)
+      lastTimestampRef.current = 0
+      isInitialLoadRef.current = true
+      currentServerIdRef.current = serverId
+    }
+  }, [serverId])
 
   // Load initial messages
   const loadMessages = useCallback(async () => {
-    if (!user) return
+    if (!user || !serverId) return
 
     try {
       setError(null)
 
-      const response = await fetch("/api/messages", {
+      const response = await fetch(`/api/messages?serverId=${serverId}`, {
         method: "GET",
         headers: {
           "Cache-Control": "no-cache",
@@ -67,7 +81,7 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
         }
 
         setIsConnected(true)
-        console.log(`Loaded ${data.messages?.length || 0} messages`)
+        console.log(`Loaded ${data.messages?.length || 0} messages for server ${serverId}`)
       } else {
         throw new Error(data.error || "Failed to load messages")
       }
@@ -79,14 +93,14 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
       setIsLoading(false)
       isInitialLoadRef.current = false
     }
-  }, [user])
+  }, [user, serverId])
 
   // Poll for new messages
   const pollMessages = useCallback(async () => {
-    if (!user || isInitialLoadRef.current) return
+    if (!user || !serverId || isInitialLoadRef.current) return
 
     try {
-      const response = await fetch(`/api/messages?since=${lastTimestampRef.current}`, {
+      const response = await fetch(`/api/messages?serverId=${serverId}&since=${lastTimestampRef.current}`, {
         method: "GET",
         headers: {
           "Cache-Control": "no-cache",
@@ -108,7 +122,7 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
           const latestMessage = data.messages[data.messages.length - 1]
           lastTimestampRef.current = latestMessage.timestamp
 
-          console.log(`Received ${data.messages.length} new messages`)
+          console.log(`Received ${data.messages.length} new messages for server ${serverId}`)
           return newMessages
         })
       }
@@ -123,12 +137,12 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
       setIsConnected(false)
       setError("Connection issues")
     }
-  }, [user, error])
+  }, [user, serverId, error])
 
   // Send a message
   const sendMessage = useCallback(
     async (text: string) => {
-      if (!user || !text.trim() || isSending) return false
+      if (!user || !text.trim() || isSending || !serverId) return false
 
       setIsSending(true)
       setError(null)
@@ -145,6 +159,7 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
             username: user.username,
             displayName: user.displayName,
             profilePicture: user.customProfilePicture || user.profilePicture,
+            serverId,
           }),
         })
 
@@ -159,7 +174,7 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
           setMessages((prev) => [...prev, data.message])
           lastTimestampRef.current = data.message.timestamp
 
-          console.log("Message sent successfully")
+          console.log(`Message sent successfully to server ${serverId}`)
           return true
         } else {
           throw new Error(data.error || "Failed to send message")
@@ -172,7 +187,7 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
         setIsSending(false)
       }
     },
-    [user, isSending],
+    [user, isSending, serverId],
   )
 
   // Clear chat (admin only)
@@ -185,7 +200,7 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
     try {
       setError(null)
 
-      const response = await fetch("/api/messages", {
+      const response = await fetch(`/api/messages?serverId=${serverId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${user.email}`,
@@ -203,7 +218,7 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
       if (data.success) {
         setMessages([])
         lastTimestampRef.current = 0
-        console.log(`Chat cleared - ${data.cleared} messages removed`)
+        console.log(`Chat cleared in server ${serverId} - ${data.cleared} messages removed`)
         return true
       } else {
         throw new Error(data.error || "Failed to clear chat")
@@ -213,7 +228,7 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
       setError(err.message || "Failed to clear chat")
       return false
     }
-  }, [user])
+  }, [user, serverId])
 
   // Refresh messages manually
   const refreshMessages = useCallback(async () => {
@@ -223,7 +238,7 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
 
   // Set up polling
   useEffect(() => {
-    if (!user) return
+    if (!user || !serverId) return
 
     // Load initial messages
     loadMessages()
@@ -236,7 +251,7 @@ export function useMessages({ user, pollingInterval = 2000 }: UseMessagesOptions
         clearInterval(pollingRef.current)
       }
     }
-  }, [user, loadMessages, pollMessages, pollingInterval])
+  }, [user, serverId, loadMessages, pollMessages, pollingInterval])
 
   return {
     messages,
