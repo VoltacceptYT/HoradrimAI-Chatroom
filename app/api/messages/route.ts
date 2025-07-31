@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { addDynamicUser } from "../users/[username]/route"
 
 // Simple in-memory message storage - now organized by server
 const messagesByServer: Record<string, Message[]> = {
@@ -16,10 +17,29 @@ interface Message {
   serverId: string
 }
 
+// Track online users per server (users who sent messages in last 5 minutes)
+const onlineUsers: Record<string, Set<string>> = {}
+
 // Helper function to generate unique message ID
 function generateMessageId(): string {
   messageCounter++
   return `msg_${Date.now()}_${messageCounter}`
+}
+
+// Helper function to get online users for a server
+function getOnlineUsers(serverId: string): string[] {
+  const now = Date.now()
+  const fiveMinutesAgo = now - 5 * 60 * 1000 // 5 minutes
+
+  if (!messagesByServer[serverId]) {
+    return []
+  }
+
+  // Get users who sent messages in the last 5 minutes
+  const recentMessages = messagesByServer[serverId].filter((msg) => msg.timestamp > fiveMinutesAgo)
+  const uniqueUsers = Array.from(new Set(recentMessages.map((msg) => msg.username)))
+
+  return uniqueUsers
 }
 
 // GET - Retrieve messages for a server
@@ -28,10 +48,21 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url)
     const serverId = url.searchParams.get("serverId") || "general"
     const since = url.searchParams.get("since")
+    const getOnlineOnly = url.searchParams.get("onlineUsers") === "true"
 
     // Initialize server messages if not exists
     if (!messagesByServer[serverId]) {
       messagesByServer[serverId] = []
+    }
+
+    // If requesting online users only
+    if (getOnlineOnly) {
+      const onlineUsersList = getOnlineUsers(serverId)
+      return NextResponse.json({
+        success: true,
+        onlineUsers: onlineUsersList,
+        serverId,
+      })
     }
 
     const serverMessages = messagesByServer[serverId]
@@ -47,6 +78,7 @@ export async function GET(request: NextRequest) {
         total: serverMessages.length,
         hasNew: newMessages.length > 0,
         serverId,
+        onlineUsers: getOnlineUsers(serverId),
       })
     }
 
@@ -59,6 +91,7 @@ export async function GET(request: NextRequest) {
       total: serverMessages.length,
       hasNew: false,
       serverId,
+      onlineUsers: getOnlineUsers(serverId),
     })
   } catch (error) {
     console.error("Error retrieving messages:", error)
@@ -69,6 +102,7 @@ export async function GET(request: NextRequest) {
         messages: [],
         total: 0,
         hasNew: false,
+        onlineUsers: [],
       },
       { status: 500 },
     )
@@ -79,7 +113,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { text, username, displayName, profilePicture, serverId = "general" } = body
+    const { text, username, displayName, profilePicture, serverId = "general", email, bio } = body
 
     // Validate required fields
     if (!text || !username) {
@@ -96,6 +130,16 @@ export async function POST(request: NextRequest) {
     if (!messagesByServer[serverId]) {
       messagesByServer[serverId] = []
     }
+
+    // Add user to dynamic users database for profile viewing
+    addDynamicUser({
+      username: username.trim(),
+      displayName: displayName?.trim() || username.trim(),
+      profilePicture: profilePicture || "/placeholder.svg?height=40&width=40",
+      customProfilePicture: null,
+      bio: bio || "Community member",
+      email: email || null,
+    })
 
     // Create new message
     const newMessage: Message = {
@@ -124,6 +168,7 @@ export async function POST(request: NextRequest) {
       message: newMessage,
       total: messagesByServer[serverId].length,
       serverId,
+      onlineUsers: getOnlineUsers(serverId),
     })
   } catch (error) {
     console.error("Error sending message:", error)

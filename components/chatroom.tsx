@@ -3,16 +3,15 @@
 import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, Trash2, LogOut, Settings, RefreshCw } from "lucide-react"
+import { Send, Trash2, LogOut, Settings, RefreshCw, AtSign, Users } from "lucide-react"
 import { InstallPrompt } from "@/components/install-prompt"
 import { ProfileSettings } from "@/components/profile-settings"
 import { ServerSelector } from "@/components/server-selector"
 import { ProfileViewer } from "@/components/profile-viewer"
 import { useMessages } from "@/hooks/use-messages"
-import { InviteHandler } from "@/components/invite-handler"
 
 interface User {
   username: string
@@ -32,15 +31,21 @@ export function Chatroom() {
   const [showClearModal, setShowClearModal] = useState(false)
   const [showProfileSettings, setShowProfileSettings] = useState(false)
   const [profileViewerUsername, setProfileViewerUsername] = useState<string | null>(null)
+  const [userSuggestions, setUserSuggestions] = useState<string[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [showOnlineUsers, setShowOnlineUsers] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   // Use the messages hook with current server
-  const { messages, isLoading, isConnected, error, isSending, sendMessage, clearChat, refreshMessages } = useMessages({
-    user,
-    serverId: currentServerId,
-    pollingInterval: 1500,
-  })
+  const { messages, onlineUsers, isLoading, isConnected, error, isSending, sendMessage, clearChat, refreshMessages } =
+    useMessages({
+      user,
+      serverId: currentServerId,
+      pollingInterval: 1500,
+    })
 
   // Initialize user and check authentication
   useEffect(() => {
@@ -57,10 +62,131 @@ export function Chatroom() {
     }
   }, [router])
 
+  // Handle invite links
+  useEffect(() => {
+    const inviteCode = searchParams.get("invite")
+    if (inviteCode && user && !user.isGuest) {
+      handleInviteLink(inviteCode)
+    }
+  }, [searchParams, user])
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
+
+  const handleInviteLink = async (inviteCode: string) => {
+    if (!user?.email || user.isGuest) {
+      alert("Please register to join servers via invite links")
+      return
+    }
+
+    try {
+      const response = await fetch("/api/servers", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inviteCode: inviteCode.trim(),
+          userEmail: user.email,
+          username: user.username,
+          displayName: user.displayName,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setCurrentServerId(data.server.id)
+        // Remove invite from URL
+        window.history.replaceState({}, document.title, window.location.pathname)
+        alert(`Successfully joined ${data.server.name}!`)
+      } else {
+        alert(data.error || "Failed to join server")
+      }
+    } catch (error) {
+      console.error("Failed to process invite link:", error)
+      alert("Failed to process invite link")
+    }
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value
+    setInputValue(value)
+
+    // Check for @ mentions
+    const cursorPosition = e.target.selectionStart
+    const textBeforeCursor = value.substring(0, cursorPosition)
+    const lastAtIndex = textBeforeCursor.lastIndexOf("@")
+
+    if (lastAtIndex !== -1) {
+      const textAfterAt = textBeforeCursor.substring(lastAtIndex + 1)
+
+      // Only show suggestions if there's no space after @
+      if (!textAfterAt.includes(" ") && textAfterAt.length >= 0) {
+        // Filter online users only (excluding current user)
+        const availableUsers = onlineUsers.filter((username) => username !== user?.username)
+        const matchingUsers = availableUsers.filter((username) =>
+          username.toLowerCase().includes(textAfterAt.toLowerCase()),
+        )
+        setUserSuggestions(matchingUsers.slice(0, 5))
+        setShowSuggestions(matchingUsers.length > 0)
+      } else {
+        setShowSuggestions(false)
+      }
+    } else {
+      setShowSuggestions(false)
+    }
+  }
+
+  const handleSuggestionClick = (username: string) => {
+    const cursorPosition = textareaRef.current?.selectionStart || 0
+    const textBeforeCursor = inputValue.substring(0, cursorPosition)
+    const textAfterCursor = inputValue.substring(cursorPosition)
+    const lastAtIndex = textBeforeCursor.lastIndexOf("@")
+
+    if (lastAtIndex !== -1) {
+      const newValue = textBeforeCursor.substring(0, lastAtIndex) + `@${username} ` + textAfterCursor
+
+      setInputValue(newValue)
+      setShowSuggestions(false)
+
+      // Focus back to textarea
+      setTimeout(() => {
+        textareaRef.current?.focus()
+        const newCursorPos = lastAtIndex + username.length + 2
+        textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos)
+      }, 0)
+    }
+  }
+
+  const renderMessageWithMentions = (text: string, currentUsername?: string) => {
+    // Split text by @ mentions
+    const parts = text.split(/(@\w+)/g)
+
+    return parts.map((part, index) => {
+      if (part.startsWith("@")) {
+        const mentionedUser = part.substring(1)
+        const isSelfMention = mentionedUser === currentUsername
+
+        return (
+          <span
+            key={index}
+            className={`font-semibold px-1 py-0.5 rounded cursor-pointer ${
+              isSelfMention
+                ? "bg-red-500/30 text-red-300 border border-red-500/50"
+                : "bg-blue-500/30 text-blue-300 border border-blue-500/50"
+            }`}
+            onClick={() => handleViewProfile(mentionedUser)}
+          >
+            {part}
+          </span>
+        )
+      }
+      return part
+    })
+  }
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -68,6 +194,7 @@ export function Chatroom() {
 
     const messageText = inputValue.trim()
     setInputValue("") // Clear input immediately
+    setShowSuggestions(false)
 
     const success = await sendMessage(messageText)
     if (!success) {
@@ -92,6 +219,15 @@ export function Chatroom() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showSuggestions && (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Enter")) {
+      e.preventDefault()
+      // Handle suggestion navigation (simplified for now)
+      if (e.key === "Enter" && userSuggestions.length > 0) {
+        handleSuggestionClick(userSuggestions[0])
+      }
+      return
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSendMessage(e)
@@ -126,7 +262,13 @@ export function Chatroom() {
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 to-black">
-        <div className="text-gray-100">Loading...</div>
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full border-2 border-red-500 bg-gradient-to-br from-gray-700 to-gray-800 shadow-sm flex items-center justify-center">
+            <span className="text-2xl font-bold text-red-400">VN</span>
+          </div>
+          <div className="text-gray-100 mb-2">Loading...</div>
+          <div className="w-8 h-8 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+        </div>
       </div>
     )
   }
@@ -134,7 +276,6 @@ export function Chatroom() {
   return (
     <>
       <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex">
-        <InviteHandler user={user} onServerChange={setCurrentServerId} />
         {/* Server Selector Sidebar */}
         <ServerSelector user={user} currentServerId={currentServerId} onServerChange={setCurrentServerId} />
 
@@ -171,6 +312,20 @@ export function Chatroom() {
                   <div className="text-xs text-gray-400">{messages.length} messages</div>
                 </div>
                 <Button
+                  onClick={() => setShowOnlineUsers(!showOnlineUsers)}
+                  size="sm"
+                  variant="ghost"
+                  className="text-gray-400 hover:text-white hover:bg-gray-700 relative"
+                  title={`${onlineUsers.length} online users`}
+                >
+                  <Users className="h-4 w-4" />
+                  {onlineUsers.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                      {onlineUsers.length}
+                    </span>
+                  )}
+                </Button>
+                <Button
                   onClick={refreshMessages}
                   size="sm"
                   variant="ghost"
@@ -199,6 +354,33 @@ export function Chatroom() {
                 </Button>
               </div>
             </div>
+
+            {/* Online Users Dropdown */}
+            {showOnlineUsers && (
+              <div className="absolute right-4 top-16 bg-gradient-to-b from-gray-800 to-gray-900 border border-gray-700 rounded-lg shadow-xl p-3 z-10 min-w-48">
+                <h3 className="text-sm font-semibold text-gray-100 mb-2">Online Users ({onlineUsers.length})</h3>
+                {onlineUsers.length > 0 ? (
+                  <div className="space-y-1">
+                    {onlineUsers.map((username) => (
+                      <button
+                        key={username}
+                        onClick={() => {
+                          handleViewProfile(username)
+                          setShowOnlineUsers(false)
+                        }}
+                        className="w-full text-left px-2 py-1 hover:bg-gray-700/50 text-gray-200 text-sm rounded transition-colors flex items-center gap-2"
+                      >
+                        <div className="w-2 h-2 rounded-full bg-green-500" />
+                        {username}
+                        {username === user.username && <span className="text-xs text-gray-400">(you)</span>}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">No users currently online</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Messages */}
@@ -213,6 +395,12 @@ export function Chatroom() {
                 <div className="text-center text-gray-400 py-8">
                   <p>Welcome to this server!</p>
                   <p className="text-sm mt-2">Start a conversation by typing a message below.</p>
+                  <p className="text-xs mt-2 text-blue-400">💡 Tip: Use @username to mention online users</p>
+                  {onlineUsers.length > 0 && (
+                    <p className="text-xs mt-1 text-green-400">
+                      🟢 {onlineUsers.length} user{onlineUsers.length !== 1 ? "s" : ""} online
+                    </p>
+                  )}
                   {canClearChat && (
                     <p className="text-xs mt-4 text-red-400">
                       🔑 You have admin privileges - you can clear chat history
@@ -220,45 +408,62 @@ export function Chatroom() {
                   )}
                 </div>
               ) : (
-                messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex flex-col ${
-                      message.username === user.username ? "ml-auto" : "mr-auto"
-                    } max-w-[75%]`}
-                  >
-                    {/* Profile */}
-                    <div className="flex items-center gap-2 mb-1">
-                      <button
-                        onClick={() => handleViewProfile(message.username)}
-                        className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-                      >
-                        <img
-                          src={message.profilePicture || "/placeholder.svg?height=24&width=24"}
-                          alt={message.displayName}
-                          className="w-6 h-6 rounded-full border border-gray-600 shadow-sm"
-                          onError={handleImageError}
-                          loading="lazy"
-                        />
-                        <span className="text-xs font-medium text-gray-100 hover:text-red-400 transition-colors">
-                          {message.displayName}
-                        </span>
-                      </button>
-                      <span className="text-xs text-gray-400">{formatTime(message.timestamp)}</span>
-                    </div>
+                messages.map((message) => {
+                  const isOwnMessage = message.username === user.username
+                  const isMentioned = message.text.includes(`@${user.username}`)
 
-                    {/* Message */}
+                  return (
                     <div
-                      className={`backdrop-blur-sm border rounded-xl p-3 shadow-sm ${
-                        message.username === user.username
-                          ? "bg-gradient-to-br from-red-600/80 to-red-700/60 border-red-500/50 text-white rounded-tr-sm"
-                          : "bg-gradient-to-br from-gray-700/80 to-gray-800/60 border-gray-600/50 text-gray-100 rounded-tl-sm"
-                      }`}
+                      key={message.id}
+                      className={`flex flex-col ${
+                        isOwnMessage ? "ml-auto" : "mr-auto"
+                      } max-w-[75%] ${isMentioned ? "ring-2 ring-red-500/50 ring-offset-2 ring-offset-gray-900" : ""}`}
                     >
-                      <div className="text-sm whitespace-pre-wrap break-words">{message.text}</div>
+                      {/* Profile */}
+                      <div className="flex items-center gap-2 mb-1">
+                        <button
+                          onClick={() => handleViewProfile(message.username)}
+                          className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                        >
+                          <img
+                            src={message.profilePicture || "/placeholder.svg?height=24&width=24"}
+                            alt={message.displayName}
+                            className="w-6 h-6 rounded-full border border-gray-600 shadow-sm"
+                            onError={handleImageError}
+                            loading="lazy"
+                          />
+                          <span className="text-xs font-medium text-gray-100 hover:text-red-400 transition-colors flex items-center gap-1">
+                            {message.displayName}
+                            {onlineUsers.includes(message.username) && (
+                              <div className="w-2 h-2 rounded-full bg-green-500" title="Online" />
+                            )}
+                          </span>
+                        </button>
+                        <span className="text-xs text-gray-400">{formatTime(message.timestamp)}</span>
+                        {isMentioned && (
+                          <span className="text-xs bg-red-500/20 text-red-400 px-1 py-0.5 rounded border border-red-500/50">
+                            mentioned you
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Message */}
+                      <div
+                        className={`backdrop-blur-sm border rounded-xl p-3 shadow-sm ${
+                          isOwnMessage
+                            ? "bg-gradient-to-br from-red-600/80 to-red-700/60 border-red-500/50 text-white rounded-tr-sm"
+                            : isMentioned
+                              ? "bg-gradient-to-br from-red-900/40 to-red-800/30 border-red-500/50 text-gray-100 rounded-tl-sm"
+                              : "bg-gradient-to-br from-gray-700/80 to-gray-800/60 border-gray-600/50 text-gray-100 rounded-tl-sm"
+                        }`}
+                      >
+                        <div className="text-sm whitespace-pre-wrap break-words">
+                          {renderMessageWithMentions(message.text, user.username)}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -267,14 +472,40 @@ export function Chatroom() {
           {/* Input */}
           <form
             onSubmit={handleSendMessage}
-            className="p-3 bg-gradient-to-t from-gray-800/70 to-gray-900/40 backdrop-blur-sm border-t border-gray-700/50 shadow-sm"
+            className="p-3 bg-gradient-to-t from-gray-800/70 to-gray-900/40 backdrop-blur-sm border-t border-gray-700/50 shadow-sm relative"
           >
+            {/* User Suggestions */}
+            {showSuggestions && userSuggestions.length > 0 && (
+              <div className="absolute bottom-full left-3 right-3 mb-2 bg-gradient-to-b from-gray-800 to-gray-900 border border-gray-700 rounded-lg shadow-xl max-h-32 overflow-y-auto z-10">
+                <div className="px-3 py-2 border-b border-gray-700">
+                  <span className="text-xs text-gray-400">Online users you can mention:</span>
+                </div>
+                {userSuggestions.map((username, index) => (
+                  <button
+                    key={username}
+                    type="button"
+                    onClick={() => handleSuggestionClick(username)}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-700/50 text-gray-200 text-sm flex items-center gap-2 transition-colors"
+                  >
+                    <div className="w-2 h-2 rounded-full bg-green-500" />
+                    <AtSign className="h-3 w-3 text-gray-400" />
+                    {username}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="flex gap-2">
               <Textarea
+                ref={textareaRef}
                 value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
+                onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your message here..."
+                placeholder={
+                  onlineUsers.length > 0
+                    ? "Type your message... (use @username to mention online users)"
+                    : "Type your message here..."
+                }
                 className="flex-1 min-h-[40px] max-h-[120px] resize-none text-sm rounded-xl"
                 disabled={!isConnected || isSending}
               />

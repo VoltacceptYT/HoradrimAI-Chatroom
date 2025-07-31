@@ -18,6 +18,7 @@ interface User {
   email?: string
   profilePicture: string
   customProfilePicture?: string
+  bio?: string
   isGuest?: boolean
   isAdmin?: boolean
 }
@@ -30,6 +31,7 @@ interface UseMessagesOptions {
 
 export function useMessages({ user, serverId, pollingInterval = 2000 }: UseMessagesOptions) {
   const [messages, setMessages] = useState<Message[]>([])
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -44,6 +46,7 @@ export function useMessages({ user, serverId, pollingInterval = 2000 }: UseMessa
   useEffect(() => {
     if (currentServerIdRef.current !== serverId) {
       setMessages([])
+      setOnlineUsers([])
       setIsLoading(true)
       lastTimestampRef.current = 0
       isInitialLoadRef.current = true
@@ -73,6 +76,7 @@ export function useMessages({ user, serverId, pollingInterval = 2000 }: UseMessa
 
       if (data.success) {
         setMessages(data.messages || [])
+        setOnlineUsers(data.onlineUsers || [])
 
         // Update last timestamp
         if (data.messages && data.messages.length > 0) {
@@ -82,6 +86,7 @@ export function useMessages({ user, serverId, pollingInterval = 2000 }: UseMessa
 
         setIsConnected(true)
         console.log(`Loaded ${data.messages?.length || 0} messages for server ${serverId}`)
+        console.log(`Online users: ${data.onlineUsers?.join(", ") || "none"}`)
       } else {
         throw new Error(data.error || "Failed to load messages")
       }
@@ -113,18 +118,23 @@ export function useMessages({ user, serverId, pollingInterval = 2000 }: UseMessa
 
       const data = await response.json()
 
-      if (data.success && data.hasNew && data.messages.length > 0) {
-        setMessages((prev) => {
-          // Add new messages to existing ones
-          const newMessages = [...prev, ...data.messages]
+      if (data.success) {
+        // Update online users
+        setOnlineUsers(data.onlineUsers || [])
 
-          // Update last timestamp
-          const latestMessage = data.messages[data.messages.length - 1]
-          lastTimestampRef.current = latestMessage.timestamp
+        if (data.hasNew && data.messages.length > 0) {
+          setMessages((prev) => {
+            // Add new messages to existing ones
+            const newMessages = [...prev, ...data.messages]
 
-          console.log(`Received ${data.messages.length} new messages for server ${serverId}`)
-          return newMessages
-        })
+            // Update last timestamp
+            const latestMessage = data.messages[data.messages.length - 1]
+            lastTimestampRef.current = latestMessage.timestamp
+
+            console.log(`Received ${data.messages.length} new messages for server ${serverId}`)
+            return newMessages
+          })
+        }
       }
 
       // Clear any connection errors
@@ -160,6 +170,8 @@ export function useMessages({ user, serverId, pollingInterval = 2000 }: UseMessa
             displayName: user.displayName,
             profilePicture: user.customProfilePicture || user.profilePicture,
             serverId,
+            email: user.email,
+            bio: user.bio,
           }),
         })
 
@@ -172,6 +184,7 @@ export function useMessages({ user, serverId, pollingInterval = 2000 }: UseMessa
         if (data.success) {
           // Add the new message immediately to the local state
           setMessages((prev) => [...prev, data.message])
+          setOnlineUsers(data.onlineUsers || [])
           lastTimestampRef.current = data.message.timestamp
 
           console.log(`Message sent successfully to server ${serverId}`)
@@ -255,6 +268,7 @@ export function useMessages({ user, serverId, pollingInterval = 2000 }: UseMessa
 
   return {
     messages,
+    onlineUsers,
     isLoading,
     isConnected,
     error,
